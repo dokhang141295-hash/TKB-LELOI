@@ -1,0 +1,3177 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Thời khoá biểu · Bảng phân công giáo viên theo lớp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,600;1,6..72,500&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+  :root {
+    --bg: #EEF0EA;
+    --surface: #FFFFFF;
+    --surface-alt: #F5F6F1;
+    --ink: #1E2A26;
+    --ink-soft: #52605A;
+    --ink-faint: #8A968F;
+    --line: #DADFD5;
+    --line-soft: #E6E9E0;
+    --accent: #9C6B18;
+    --accent-ink: #6E4B0E;
+    --accent-soft: #F3E6CB;
+    --accent-soft-line: #E4CE9C;
+    --sang: #2E6E62;
+    --sang-soft: #E1EEE9;
+    --chieu: #8A5A34;
+    --chieu-soft: #F1E4D6;
+    --danger: #A13B2B;
+    --danger-soft: #F6E3DE;
+    --radius-s: 6px;
+    --radius-m: 10px;
+    --radius-l: 16px;
+    --shadow: 0 1px 2px rgba(30,42,38,0.06), 0 6px 20px -8px rgba(30,42,38,0.12);
+    --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+    --font-body: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14201C;
+      --surface: #1B2A25;
+      --surface-alt: #203129;
+      --ink: #ECEFE9;
+      --ink-soft: #AFBDB4;
+      --ink-faint: #77897F;
+      --line: #33453C;
+      --line-soft: #2A3B33;
+      --accent: #D6A44C;
+      --accent-ink: #F1C878;
+      --accent-soft: #3A3120;
+      --accent-soft-line: #5C4A22;
+      --sang: #5FA694;
+      --sang-soft: #1E3830;
+      --chieu: #C08857;
+      --chieu-soft: #3A2C1D;
+      --danger: #DB8871;
+      --danger-soft: #3B241E;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14201C;
+    --surface: #1B2A25;
+    --surface-alt: #203129;
+    --ink: #ECEFE9;
+    --ink-soft: #AFBDB4;
+    --ink-faint: #77897F;
+    --line: #33453C;
+    --line-soft: #2A3B33;
+    --accent: #D6A44C;
+    --accent-ink: #F1C878;
+    --accent-soft: #3A3120;
+    --accent-soft-line: #5C4A22;
+    --sang: #5FA694;
+    --sang-soft: #1E3830;
+    --chieu: #C08857;
+    --chieu-soft: #3A2C1D;
+    --danger: #DB8871;
+    --danger-soft: #3B241E;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.5;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent-soft); color: var(--accent-ink); }
+  button, input, select { font-family: inherit; font-size: inherit; color: inherit; }
+  button { cursor: pointer; }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  /* ---------- Header ---------- */
+  .topbar {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 20;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+  }
+  .brand__mark {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 600;
+    font-size: 22px;
+    color: var(--accent-ink);
+    letter-spacing: 0.2px;
+    flex-shrink: 0;
+  }
+  .brand__meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .brand__school {
+    font-weight: 600;
+    font-size: 13.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .brand__sub {
+    font-size: 12px;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .topbar__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: var(--radius-s);
+    border: 1px solid var(--line);
+    background: var(--surface);
+    font-weight: 600;
+    font-size: 12.5px;
+    color: var(--ink);
+    transition: border-color .15s ease, background .15s ease;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .btn--primary {
+    background: var(--ink);
+    color: var(--surface);
+    border-color: var(--ink);
+  }
+  .btn--primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+  .btn--icon { padding: 8px; width: 34px; height: 34px; justify-content: center; }
+  .btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+  /* ---------- Layout ---------- */
+  .layout {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  .sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--line);
+    background: var(--surface-alt);
+    padding: 16px 14px 24px;
+    overflow-y: auto;
+  }
+  .main {
+    flex: 1;
+    min-width: 0;
+    padding: 22px 26px 60px;
+    overflow-y: auto;
+  }
+
+  .mode-toggle {
+    display: flex;
+    gap: 3px;
+    padding: 3px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-m);
+    margin-bottom: 18px;
+  }
+  .mode-btn {
+    flex: 1;
+    padding: 7px 4px;
+    border-radius: var(--radius-s);
+    border: none;
+    background: transparent;
+    color: var(--ink-soft);
+    font-weight: 600;
+    font-size: 11.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mode-btn[aria-current="true"] {
+    background: var(--ink);
+    color: var(--surface);
+  }
+
+  .side-block { margin-bottom: 20px; }
+  .side-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink-faint);
+    letter-spacing: .04em;
+    margin: 0 0 8px 2px;
+  }
+  .select {
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: var(--radius-s);
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+  .search {
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: var(--radius-s);
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 13px;
+    margin-bottom: 14px;
+  }
+  .search::placeholder { color: var(--ink-faint); }
+
+  .grade-group { margin-bottom: 14px; }
+  .grade-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink-soft);
+    margin: 0 0 6px 2px;
+  }
+  .class-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .class-chip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 9px;
+    border-radius: var(--radius-s);
+    border: 1px solid transparent;
+    background: transparent;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-soft);
+  }
+  .class-chip:hover { background: var(--surface); border-color: var(--line); }
+  .class-chip[aria-current="true"] {
+    background: var(--ink);
+    color: var(--surface);
+    font-weight: 600;
+  }
+  .class-chip__count {
+    font-size: 11px;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .class-chip[aria-current="true"] .class-chip__count { color: var(--bg); opacity: .75; }
+
+  .side-footnote {
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    line-height: 1.5;
+    padding: 10px 2px 0;
+    border-top: 1px solid var(--line-soft);
+    margin-top: 6px;
+  }
+
+  /* ---------- Empty state ---------- */
+  .empty {
+    max-width: 560px;
+    margin: 6vh auto 0;
+    text-align: center;
+    padding: 44px 30px;
+  }
+  .empty__icon {
+    width: 46px;
+    height: 46px;
+    margin: 0 auto 18px;
+    color: var(--accent);
+  }
+  .empty h1 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 26px;
+    margin: 0 0 10px;
+    letter-spacing: .1px;
+  }
+  .empty p {
+    color: var(--ink-soft);
+    margin: 0 0 26px;
+    font-size: 14px;
+    line-height: 1.65;
+  }
+  .dropzone {
+    border: 1.5px dashed var(--line);
+    border-radius: var(--radius-l);
+    padding: 30px 20px;
+    background: var(--surface);
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .dropzone.is-drag { border-color: var(--accent); background: var(--accent-soft); }
+  .dropzone__actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+  .dropzone__hint {
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin-top: 14px;
+  }
+
+  /* ---------- Main header ---------- */
+  .view-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+  .view-header h1 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 28px;
+    margin: 0 0 4px;
+  }
+  .view-header .sub {
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+  .stat-row {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .stat {
+    text-align: right;
+  }
+  .stat b {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--accent-ink);
+  }
+  .stat span {
+    font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: .02em;
+  }
+
+  .warn-banner {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    background: var(--danger-soft);
+    color: var(--danger);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-m);
+    padding: 10px 14px;
+    font-size: 12.5px;
+    margin-bottom: 18px;
+  }
+  .warn-banner svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ---------- Panels ---------- */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-l);
+    box-shadow: var(--shadow);
+    margin-bottom: 22px;
+    overflow: hidden;
+  }
+  .panel__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line-soft);
+    flex-wrap: wrap;
+  }
+  .panel__head h2 {
+    font-family: var(--font-display);
+    font-size: 16.5px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .panel__head .hint { font-size: 11.5px; color: var(--ink-faint); }
+  .panel__body { padding: 4px 18px 18px; overflow-x: auto; }
+  .panel__body.flush { padding: 0; }
+
+  /* ---------- Weekly grid ---------- */
+  .grid-table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 640px;
+    font-size: 12.5px;
+  }
+  .grid-table th, .grid-table td {
+    border: 1px solid var(--line-soft);
+    padding: 7px 8px;
+    vertical-align: top;
+  }
+  .grid-table thead th {
+    background: var(--surface-alt);
+    font-weight: 700;
+    font-size: 11.5px;
+    letter-spacing: .01em;
+    color: var(--ink-soft);
+    position: sticky;
+    top: 0;
+  }
+  .grid-table .col-day {
+    font-weight: 700;
+    background: var(--surface-alt);
+    white-space: nowrap;
+    text-align: center;
+    font-size: 12px;
+  }
+  .grid-table .col-buoi {
+    font-weight: 600;
+    white-space: nowrap;
+    text-align: center;
+    font-size: 11px;
+  }
+  .grid-table .col-buoi.sang { color: var(--sang); background: var(--sang-soft); }
+  .grid-table .col-buoi.chieu { color: var(--chieu); background: var(--chieu-soft); }
+  .grid-table .col-tiet {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-faint);
+    width: 30px;
+  }
+  .cell-slot { min-width: 108px; }
+  .cell-slot .subj { display: block; font-weight: 600; color: var(--ink); }
+  .cell-slot .teach { display: block; font-size: 11px; color: var(--ink-soft); margin-top: 1px; }
+  .cell-slot.empty { color: var(--ink-faint); }
+  .cell-slot.empty::after { content: "—"; }
+
+  /* ---------- Teacher summary table ---------- */
+  .tsum-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 13px;
+  }
+  .tsum-table th, .tsum-table td {
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--line-soft);
+    text-align: left;
+    vertical-align: top;
+  }
+  .tsum-table thead th {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink-faint);
+    letter-spacing: .02em;
+    border-bottom: 1px solid var(--line);
+  }
+  .tsum-table tbody tr:hover { background: var(--surface-alt); }
+  .tname { font-weight: 600; }
+  .tsubj {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    font-size: 11.5px;
+    font-weight: 600;
+    border: 1px solid var(--accent-soft-line);
+  }
+  .tcount { font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+  .tslots { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tslot {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: var(--radius-s);
+    background: var(--surface-alt);
+    border: 1px solid var(--line-soft);
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+  .tslot.sang { color: var(--sang); }
+  .tslot.chieu { color: var(--chieu); }
+  .tname.clickable { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+  .tname.clickable:hover { color: var(--accent-ink); }
+
+  .version-panel-title {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .version-panel-title .badge-latest {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-soft-line);
+    padding: 1px 6px;
+    border-radius: 999px;
+  }
+  .bar-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 4px 2px 14px;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+  .legend-item { display: inline-flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 9px; height: 9px; border-radius: 999px; display: inline-block; }
+  .legend-dot.high { background: var(--danger); }
+  .legend-dot.normal { background: var(--accent); }
+  .legend-dot.low { background: var(--sang); }
+  .legend-line { width: 12px; height: 0; border-top: 2px dashed var(--ink-faint); display: inline-block; }
+
+  .bar-list { max-height: 560px; overflow-y: auto; padding-right: 4px; }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+  }
+  .bar-row__label {
+    width: 108px;
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--ink);
+  }
+  .bar-row__label.clickable { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+  .bar-row__label.clickable:hover { color: var(--accent-ink); }
+  .bar-row__track {
+    flex: 1;
+    position: relative;
+    height: 16px;
+    background: var(--surface-alt);
+    border-radius: 4px;
+    overflow: visible;
+  }
+  .bar-row__fill {
+    height: 100%;
+    border-radius: 4px;
+    background: var(--accent);
+    transition: width .15s ease;
+  }
+  .bar-row__fill.high { background: var(--danger); }
+  .bar-row__fill.normal { background: var(--accent); }
+  .bar-row__fill.low { background: var(--sang); }
+  .bar-row__avgline {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 0;
+    border-left: 1.5px dashed var(--ink-faint);
+    opacity: .7;
+  }
+  .bar-row__value {
+    width: 30px;
+    flex-shrink: 0;
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-soft);
+  }
+
+  .leave-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  @media (max-width: 560px) { .leave-form-grid { grid-template-columns: 1fr; } }
+  .slot-check-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-m);
+    padding: 6px;
+    background: var(--surface-alt);
+  }
+  .slot-check-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    padding: 6px 8px;
+    border-radius: var(--radius-s);
+    cursor: pointer;
+  }
+  .slot-check-item:hover { background: var(--surface); }
+  .slot-check-item input { flex-shrink: 0; accent-color: var(--accent); width: 15px; height: 15px; }
+  .slot-check-item .sc-main { font-weight: 600; }
+  .slot-check-item .sc-sub { color: var(--ink-faint); font-size: 11px; margin-left: auto; white-space: nowrap; }
+  .slot-check-empty { color: var(--ink-faint); font-size: 12.5px; padding: 10px 4px; }
+
+  .subst-select {
+    width: 100%;
+    min-width: 160px;
+    padding: 6px 8px;
+    border-radius: var(--radius-s);
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 12px;
+  }
+  .subst-select.missing { border-color: var(--danger); }
+  .absence-remove {
+    background: none;
+    border: none;
+    color: var(--danger);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 4px 6px;
+  }
+  .absence-week-tag {
+    display: block;
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    margin-top: 2px;
+  }
+
+  .diff-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .diff-badge.over { background: var(--danger-soft); color: var(--danger); }
+  .diff-badge.under { background: var(--sang-soft); color: var(--sang); }
+  .diff-badge.zero { background: var(--surface-alt); color: var(--ink-faint); }
+  .assign-mini-dropzone {
+    border: 1.5px dashed var(--line);
+    border-radius: var(--radius-l);
+    padding: 26px 20px;
+    background: var(--surface);
+    text-align: center;
+  }
+  .assign-mini-dropzone.is-drag { border-color: var(--accent); background: var(--accent-soft); }
+  .unmatched-select {
+    width: 100%;
+    min-width: 160px;
+    padding: 6px 8px;
+    border-radius: var(--radius-s);
+    border: 1px solid var(--danger);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 12px;
+  }
+
+  .tclass {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: var(--radius-s);
+    background: var(--surface-alt);
+    border: 1px solid var(--line-soft);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  @media (max-width: 860px) {
+    .layout { flex-direction: column; }
+    .sidebar {
+      width: 100%;
+      border-right: none;
+      border-bottom: 1px solid var(--line);
+      max-height: 40vh;
+    }
+    .main { padding: 18px 14px 50px; }
+    .view-header h1 { font-size: 22px; }
+  }
+
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand__mark">TKB</span>
+      <div class="brand__meta">
+        <span class="brand__school" id="brandSchool">Chưa có dữ liệu</span>
+        <span class="brand__sub" id="brandSub">Tải thời khoá biểu để bắt đầu</span>
+      </div>
+    </div>
+    <div class="topbar__actions" id="topbarActions" hidden>
+      <button class="btn" id="addMoreBtn">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 4v12M4 10h12"/></svg>
+        Thêm tệp
+      </button>
+      <button class="btn btn--icon" id="themeToggle" title="Đổi giao diện sáng/tối" aria-label="Đổi giao diện sáng/tối">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="4"/><path d="M10 1.5v2M10 16.5v2M3.5 10h-2M18.5 10h-2M5.3 5.3 3.9 3.9M16.1 16.1l-1.4-1.4M14.7 5.3l1.4-1.4M3.9 16.1l1.4-1.4"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar" hidden>
+      <div class="mode-toggle" id="modeToggle">
+        <button class="mode-btn" data-mode="overview" aria-current="true">Tổng quan</button>
+        <button class="mode-btn" data-mode="class">Lớp</button>
+        <button class="mode-btn" data-mode="teacher">Giáo viên</button>
+        <button class="mode-btn" data-mode="leave">Dạy thay</button>
+        <button class="mode-btn" data-mode="assignment">Phân công</button>
+      </div>
+
+      <div class="side-block">
+        <p class="side-label">TỆP ĐÃ TẢI</p>
+        <div id="loadedFilesInfo" style="font-size:12px; color:var(--ink-soft); line-height:1.6;"></div>
+      </div>
+
+      <div id="classSidebarBlock">
+        <div class="side-block">
+          <p class="side-label">TÌM LỚP</p>
+          <input class="search" id="classSearch" type="text" placeholder="VD: 10A1, 12A3…">
+        </div>
+        <div id="classGroups"></div>
+      </div>
+
+      <div id="teacherSidebarBlock" hidden>
+        <div class="side-block">
+          <p class="side-label">TÌM GIÁO VIÊN</p>
+          <input class="search" id="teacherSearch" type="text" placeholder="VD: T.HÀ, C.DUNG…">
+        </div>
+        <div class="class-list" id="teacherList" style="gap:2px;"></div>
+      </div>
+
+      <div class="side-footnote" id="sideFootnote"></div>
+    </aside>
+
+    <main class="main" id="main">
+      <div class="empty" id="emptyState">
+        <svg class="empty__icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.4">
+          <rect x="7" y="10" width="34" height="30" rx="3"/>
+          <path d="M7 18h34"/>
+          <path d="M15 6v8M33 6v8"/>
+          <path d="M14 25h6M14 31h6M22 25h12M22 31h8"/>
+        </svg>
+        <h1>Bảng phân công giáo viên theo lớp</h1>
+        <p>Tải lên thư mục (hoặc từng tệp) thời khoá biểu dạng <code>.xls / .xlsx</code> có sheet <strong>TKBLop2b</strong>. Ứng dụng sẽ tự đọc từng lớp, xếp lịch theo Thứ · Buổi · Tiết, và tổng hợp giáo viên — môn học cho từng lớp. File chỉ được xử lý ngay trên trình duyệt của bạn, không gửi lên máy chủ nào.</p>
+        <div class="dropzone" id="dropzone">
+          <div class="dropzone__actions">
+            <button class="btn btn--primary" id="chooseFolderBtn">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2.5 6.2a1.5 1.5 0 0 1 1.5-1.5h3.2l1.6 1.8h7.2a1.5 1.5 0 0 1 1.5 1.5v6.8a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5V6.2Z"/></svg>
+              Chọn thư mục
+            </button>
+            <button class="btn" id="chooseFilesBtn">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3v10M5.5 8.5 10 13l4.5-4.5"/><path d="M3.5 16.5h13"/></svg>
+              Chọn tệp
+            </button>
+          </div>
+          <p class="dropzone__hint">…hoặc kéo-thả các tệp .xls/.xlsx vào đây</p>
+        </div>
+      </div>
+
+      <div id="overviewDashboard" hidden>
+        <div id="overviewWarnBanner"></div>
+        <div class="view-header">
+          <div>
+            <h1>Tổng quan phân công</h1>
+            <div class="sub" id="overviewSub">Kiểm tra mức độ đồng đều giữa các giáo viên và các lớp</div>
+          </div>
+          <div class="stat-row" id="overviewStatRow"></div>
+        </div>
+
+        <section class="panel">
+          <div class="panel__head">
+            <h2>Tổng số tiết theo giáo viên</h2>
+            <span class="hint" id="teacherBarsHint">—</span>
+          </div>
+          <div class="panel__body">
+            <div class="bar-legend">
+              <span class="legend-item"><i class="legend-dot high"></i>Cao hơn TB</span>
+              <span class="legend-item"><i class="legend-dot normal"></i>Trong khoảng TB</span>
+              <span class="legend-item"><i class="legend-dot low"></i>Thấp hơn TB</span>
+              <span class="legend-item"><i class="legend-line"></i>Đường TB</span>
+            </div>
+            <div id="teacherBars"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel__head">
+            <h2>Tổng số tiết theo lớp</h2>
+            <span class="hint" id="classBarsHint">—</span>
+          </div>
+          <div class="panel__body">
+            <div id="classBars"></div>
+          </div>
+        </section>
+      </div>
+
+      <div id="dashboard" hidden>
+        <div id="warnBanner"></div>
+        <div class="view-header">
+          <div>
+            <h1 id="classTitle">—</h1>
+            <div class="sub" id="classSub">—</div>
+          </div>
+          <div class="stat-row" id="statRow"></div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; align-items:center; gap:10px; margin:-6px 0 14px;">
+          <span id="exportClassStatus" style="font-size:12px; color:var(--ink-faint);"></span>
+          <button class="btn" id="exportClassBtn">⬇ Xuất Excel theo lớp</button>
+        </div>
+
+        <section class="panel">
+          <div class="panel__head">
+            <h2>Giáo viên đứng lớp</h2>
+            <span class="hint" id="teacherHint">—</span>
+          </div>
+          <div class="panel__body">
+            <table class="tsum-table" id="teacherTable"></table>
+          </div>
+        </section>
+      </div>
+
+      <div id="leaveDashboard" hidden>
+        <div id="leaveWarnBanner"></div>
+        <div class="view-header">
+          <div>
+            <h1>Nghỉ phép &amp; đề xuất dạy thay</h1>
+            <div class="sub" id="leaveSub">—</div>
+          </div>
+          <div class="stat-row" id="leaveStatRow"></div>
+        </div>
+
+        <section class="panel">
+          <div class="panel__head">
+            <h2>Đăng ký giáo viên nghỉ</h2>
+            <span class="hint">Dựa trên thời khoá biểu mới nhất đã tải</span>
+          </div>
+          <div class="panel__body">
+            <div class="leave-form-grid">
+              <div>
+                <p class="side-label">GIÁO VIÊN BÁO NGHỈ</p>
+                <select class="select" id="leaveTeacherSelect" style="width:100%;"></select>
+              </div>
+              <div>
+                <p class="side-label">TUẦN ÁP DỤNG (ghi chú, tuỳ chọn)</p>
+                <input class="search" id="leaveWeekLabel" type="text" placeholder="VD: Tuần 29/09 – 05/10" style="width:100%;">
+              </div>
+            </div>
+            <p class="side-label">CHỌN TIẾT NGHỈ (tick những tiết giáo viên báo nghỉ trong tuần đó)</p>
+            <div class="slot-check-list" id="leaveSlotChecklist"></div>
+            <button class="btn btn--primary" id="addAbsenceBtn" style="margin-top:12px;">+ Thêm vào danh sách nghỉ</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel__head">
+            <h2>Danh sách nghỉ &amp; đề xuất giáo viên dạy thay</h2>
+            <span class="hint" id="absenceHint">—</span>
+          </div>
+          <div class="panel__body">
+            <table class="tsum-table" id="absenceTable"></table>
+          </div>
+        </section>
+      </div>
+
+      <div id="assignmentDashboard" hidden>
+        <div id="assignmentWarnBanner"></div>
+        <div class="view-header">
+          <div>
+            <h1>So sánh Phân công ↔ Thời khoá biểu</h1>
+            <div class="sub" id="assignmentSub">—</div>
+          </div>
+          <div class="stat-row" id="assignmentStatRow"></div>
+        </div>
+
+        <div id="assignmentVersionsInfo" style="margin-bottom:14px;"></div>
+
+        <div id="assignmentEmpty" class="panel" style="padding:32px 20px; text-align:center;">
+          <p style="color:var(--ink-soft); margin:0 0 16px; font-size:14px;">
+            Chưa có bảng "Phân công giảng dạy". Tải lên tệp Excel phân công (dạng có cột "Họ CB.GV", "Tên", "Số tiết" theo Khối 10/11/12) — app sẽ tự nhận diện, không cần chọn loại tệp. Khi trường ra bản Lần 2, Lần 3… chỉ cần tải thêm, app tự dùng bản mới nhất để so sánh.
+          </p>
+          <div class="assign-mini-dropzone" id="assignmentDropzone">
+            <button class="btn btn--primary" id="chooseAssignmentBtn">+ Chọn tệp phân công</button>
+            <p class="dropzone__hint">…hoặc kéo-thả tệp vào đây</p>
+          </div>
+        </div>
+
+        <div id="assignmentContent" hidden>
+          <section class="panel">
+            <div class="panel__head">
+              <h2>Chênh lệch tiết dạy theo giáo viên</h2>
+              <span class="hint" id="assignmentHint">—</span>
+            </div>
+            <div class="panel__body">
+              <table class="tsum-table" id="assignmentTable"></table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel__head">
+              <h2>Xuất TKB tuần tới</h2>
+              <span class="hint">Sao chép TKB mới nhất, tô vàng các tiết đang vượt định mức phân công</span>
+            </div>
+            <div class="panel__body">
+              <p style="font-size:12.5px; color:var(--ink-soft); margin:0 0 12px;">
+                Xuất ra tệp .xlsx đúng mẫu TKB gốc cho tuần kế tiếp: tô <b>vàng</b> những tiết khiến giáo viên vượt định mức phân công mới nhất, và tự điền tiết <b>bù</b> (tô xanh lá) cho những tiết nghỉ đã chọn "Bù vào tuần sau" ở tab Dạy thay — để người phụ trách chuyên môn rà lại trước khi ban hành.
+              </p>
+              <button class="btn btn--primary" id="exportNextWeekBtn">⬇ Xuất TKB tuần tới (.xlsx)</button>
+              <span id="exportNextWeekStatus" style="margin-left:10px; font-size:12px; color:var(--ink-faint);"></span>
+            </div>
+          </section>
+
+          <div style="text-align:right; margin-top:-6px;">
+            <button class="btn" id="reuploadAssignmentBtn" style="font-size:11.5px;">+ Thêm phiên bản phân công mới (Lần 2, 3…)</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="teacherDashboard" hidden>
+        <div id="teacherWarnBanner"></div>
+        <div class="view-header">
+          <div>
+            <h1 id="teacherTitle">—</h1>
+            <div class="sub" id="teacherSub">—</div>
+          </div>
+          <div class="stat-row" id="teacherStatRow"></div>
+        </div>
+
+        <section class="panel">
+          <div class="panel__head">
+            <h2>Lịch dạy — tổng hợp tất cả tệp</h2>
+            <span class="hint" id="teacherPanelHint">—</span>
+          </div>
+          <div class="panel__body">
+            <table class="tsum-table" id="teacherClassTable"></table>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+
+<input type="file" id="folderInput" webkitdirectory directory multiple style="display:none" accept=".xls,.xlsx">
+<input type="file" id="filesInput" multiple style="display:none" accept=".xls,.xlsx">
+<input type="file" id="assignmentInput" style="display:none" accept=".xls,.xlsx">
+
+<script>
+(function () {
+  "use strict";
+
+  /* ============ Constants ============ */
+  var DAY_ORDER = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
+  var BUOI_ORDER = ["SÁNG", "CHIỀU", "TỐI"];
+
+  /* ============ State ============ */
+  var state = {
+    versions: [],      // [{fileName, truong, hocky, namhoc, hieuluc, hieulucDate, classes:[names], scheduleByClass:{}, lastModified}]
+    skipped: [],        // filenames that couldn't be parsed
+    currentClass: null,
+    viewMode: "overview",  // "overview" | "class" | "teacher" | "leave"
+    currentTeacher: null,
+    absences: [],       // [{id, teacher, day, buoi, tiet, cls, subject, weekLabel, substitute}], persisted locally
+    leaveTeacher: null,  // currently selected teacher in the "add absence" form
+    assignmentDocs: [], // [{fileName, sheetName, staff, lanNumber, lanDate, lastModified}], persisted locally, newest Lần first
+    assignmentOverrides: {} // "ho|ten" -> manually chosen TKB teacher name, persisted locally
+  };
+
+  /* ============ Helpers ============ */
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $all(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function el(tag, attrs, children) {
+    var e = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function (k) {
+        if (k === "class") e.className = attrs[k];
+        else if (k === "html") e.innerHTML = attrs[k];
+        else if (k === "text") e.textContent = attrs[k];
+        else e.setAttribute(k, attrs[k]);
+      });
+    }
+    (children || []).forEach(function (c) { if (c) e.appendChild(c); });
+    return e;
+  }
+  function firstNonEmpty(arr) {
+    for (var i = 0; i < arr.length; i++) {
+      var v = arr[i];
+      var s = (v === undefined || v === null) ? "" : v.toString().trim();
+      if (s) return s;
+    }
+    return "";
+  }
+  function parseVNDate(str) {
+    if (!str) return null;
+    var s = str.toString().trim();
+    var m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+    if (m) {
+      var d = +m[1], mo = +m[2], y = +m[3];
+      if (y < 100) y += 2000;
+      var dt = new Date(y, mo - 1, d);
+      if (!isNaN(dt.getTime())) return dt;
+    }
+    var m2 = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m2) {
+      var dt2 = new Date(+m2[1], +m2[2] - 1, +m2[3]);
+      if (!isNaN(dt2.getTime())) return dt2;
+    }
+    return null;
+  }
+  function fmtDate(d) {
+    if (!d) return "—";
+    var dd = ("0" + d.getDate()).slice(-2);
+    var mm = ("0" + (d.getMonth() + 1)).slice(-2);
+    return dd + "/" + mm + "/" + d.getFullYear();
+  }
+  function gradeOf(className) {
+    var m = className.match(/^(\d{2})/);
+    return m ? m[1] : "Khác";
+  }
+  function dayIdx(d) {
+    var i = DAY_ORDER.indexOf(d);
+    return i === -1 ? 99 : i;
+  }
+  function buoiIdx(b) {
+    var i = BUOI_ORDER.indexOf((b || "").toUpperCase());
+    return i === -1 ? 99 : i;
+  }
+  function buoiClass(b) {
+    var u = (b || "").toUpperCase();
+    if (u === "SÁNG") return "sang";
+    if (u === "CHIỀU") return "chieu";
+    return "";
+  }
+  // Fix common typing inconsistencies in the source spreadsheet so the same
+  // teacher/subject isn't split into two entries just because of stray spacing
+  // (e.g. "C. HẰNG" vs "C.HẰNG" both become "C.HẰNG").
+  function normalizeText(s) {
+    return (s || "")
+      .replace(/\s+/g, " ")   // collapse multiple/odd whitespace to a single space
+      .replace(/\.\s+/g, ".") // "C. HẰNG" -> "C.HẰNG"
+      .trim();
+  }
+  // Manual overrides for the same teacher written under two different
+  // abbreviations across files (confirmed by the user) — not fixable by
+  // whitespace normalization alone. Key/value are matched case-insensitively.
+  // Add more "WRONG": "CANONICAL" pairs here if other mismatches turn up.
+  var TEACHER_ALIASES = {
+    "C.N ANH": "C.ANH",
+    "CMAI": "C.MAI",
+    "T.M THANH": "T.M THÀNH"
+  };
+  function applyTeacherAlias(teacher) {
+    var hit = TEACHER_ALIASES[teacher.toUpperCase()];
+    return hit || teacher;
+  }
+  // Same idea for subject names: file SO1 uses short forms ("LÍ", "SINH", "TIN"...)
+  // while SO2/SO4 spell them out ("VẬT LÍ", "SINH HỌC", "TIN HỌC"...); a couple of
+  // files also drop a diacritic ("HOA" instead of "HÓA", "CD LÍ" instead of "CĐ LÍ").
+  // Confirmed by comparing which teacher/classes each short form maps to.
+  var SUBJECT_ALIASES = {
+    "ANQP": "QPAN",
+    "C.NGHỆ": "CÔNG NGHỆ",
+    "HOA": "HÓA",
+    "CD HÓA": "CĐ HÓA",
+    "CD LÍ": "CĐ LÍ",
+    "LÍ": "VẬT LÍ",
+    "SINH": "SINH HỌC",
+    "SỪ": "LỊCH SỬ",
+    "SỬ": "LỊCH SỬ",
+    "TIN": "TIN HỌC",
+    "ĐỊA": "ĐỊA LÝ"
+  };
+  function applySubjectAlias(subject) {
+    var hit = SUBJECT_ALIASES[subject.toUpperCase()];
+    return hit || subject;
+  }
+  // Data-entry slip in SO1 only: the History teacher's cells were typed as
+  // "C.HẰNG" (missing the "X"), which then collides with the Math teacher who
+  // is genuinely named "C.HẰNG" (confirmed: SO2/SO4/SO4(1) consistently show
+  // "C.X HẰNG" teaching every Lịch Sử / CĐ Sử class). Re-route by subject.
+  var TEACHER_SUBJECT_FIXUPS = [
+    { wrongTeacher: "C.HẰNG", subjects: ["LỊCH SỬ", "CĐ SỬ"], correctTeacher: "C.X HẰNG" }
+  ];
+  function applyTeacherSubjectFixup(teacher, subject) {
+    for (var i = 0; i < TEACHER_SUBJECT_FIXUPS.length; i++) {
+      var f = TEACHER_SUBJECT_FIXUPS[i];
+      if (teacher.toUpperCase() === f.wrongTeacher && f.subjects.indexOf(subject.toUpperCase()) > -1) {
+        return f.correctTeacher;
+      }
+    }
+    return teacher;
+  }
+  function slotLabel(day, buoi, tiet) {
+    var bc = buoiClass(buoi);
+    var letter = bc === "sang" ? "S" : bc === "chieu" ? "C" : (buoi || "").slice(0, 1);
+    return (day || "").replace("Thứ ", "T") + " " + letter + tiet;
+  }
+  function sortSlots(slots) {
+    return slots.slice().sort(function (a, b) {
+      var d = dayIdx(a.day) - dayIdx(b.day);
+      if (d !== 0) return d;
+      var bu = buoiIdx(a.buoi) - buoiIdx(b.buoi);
+      if (bu !== 0) return bu;
+      return (+a.tiet) - (+b.tiet);
+    });
+  }
+  // Dedupe identical (day,buoi,tiet) slots that repeat across merged files; keep a count per unique slot.
+  function mergeSlots(rawSlots) {
+    var map = {};
+    rawSlots.forEach(function (s) {
+      var key = s.day + "|" + s.buoi + "|" + s.tiet;
+      if (!map[key]) map[key] = { day: s.day, buoi: s.buoi, tiet: s.tiet, count: 0 };
+      map[key].count++;
+    });
+    return sortSlots(Object.keys(map).map(function (k) { return map[k]; }));
+  }
+  function renderSlotChips(container, rawSlots) {
+    mergeSlots(rawSlots).forEach(function (s) {
+      var bc = buoiClass(s.buoi);
+      var label = slotLabel(s.day, s.buoi, s.tiet) + (s.count > 1 ? " ×" + s.count : "");
+      container.appendChild(el("span", { class: "tslot " + bc, text: label }));
+    });
+  }
+
+  /* ============ Parsing ============ */
+  function parseWorkbookFile(file, wb) {
+    var ws = wb.Sheets["TKBLop2b"];
+    var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
+
+    var truong = "", hocky = "", namhoc = "", hieuluc = "";
+    for (var r = 0; r < Math.min(10, rows.length); r++) {
+      var row = rows[r] || [];
+      var label = (row[0] || "").toString().trim();
+      if (label === "Trường") truong = firstNonEmpty(row.slice(1));
+      else if (label === "Học kỳ") hocky = firstNonEmpty(row.slice(1));
+      else if (label === "Năm học") namhoc = firstNonEmpty(row.slice(1));
+      else if (label.indexOf("Có giá trị") === 0 || label.indexOf("Có hiệu lực") === 0) hieuluc = firstNonEmpty(row.slice(1));
+    }
+
+    var headerRowIdx = -1;
+    for (var r2 = 0; r2 < rows.length; r2++) {
+      var rr = rows[r2] || [];
+      var found = rr.some(function (c) { return (c || "").toString().trim() === "Tiết"; });
+      if (found) { headerRowIdx = r2; break; }
+    }
+    if (headerRowIdx === -1) {
+      return { fileName: file.name, error: "Không tìm thấy dòng tiêu đề (cột 'Tiết')." };
+    }
+
+    var headerRow = rows[headerRowIdx];
+    var tietColIdx = -1;
+    for (var c0 = 0; c0 < headerRow.length; c0++) {
+      if ((headerRow[c0] || "").toString().trim() === "Tiết") { tietColIdx = c0; break; }
+    }
+    var classCols = [];
+    for (var c = tietColIdx + 1; c < headerRow.length; c++) {
+      var name = (headerRow[c] || "").toString().trim();
+      if (name) classCols.push({ idx: c, name: name });
+    }
+    if (!classCols.length) {
+      return { fileName: file.name, error: "Không tìm thấy cột lớp nào." };
+    }
+
+    var hieulucRowIdx = -1, hieulucColIdx = -1;
+    for (var rH = 0; rH < Math.min(10, rows.length); rH++) {
+      var rowH = rows[rH] || [];
+      var labelH = (rowH[0] || "").toString().trim();
+      if (labelH.indexOf("Có giá trị") === 0 || labelH.indexOf("Có hiệu lực") === 0) {
+        hieulucRowIdx = rH;
+        for (var cH = 1; cH < rowH.length; cH++) {
+          if ((rowH[cH] || "").toString().trim()) { hieulucColIdx = cH; break; }
+        }
+        break;
+      }
+    }
+
+    var currentDay = "", currentBuoi = "";
+    var scheduleByClass = {};
+    classCols.forEach(function (cc) { scheduleByClass[cc.name] = []; });
+
+    for (var r3 = headerRowIdx + 1; r3 < rows.length; r3++) {
+      var row3 = rows[r3] || [];
+      var dayVal = (row3[0] || "").toString().trim();
+      var buoiVal = (row3[1] || "").toString().trim();
+      var tietVal = (row3[tietColIdx] || "").toString().trim();
+      if (dayVal) currentDay = dayVal;
+      if (buoiVal) currentBuoi = buoiVal.toUpperCase();
+      if (!tietVal) continue;
+      classCols.forEach(function (cc) {
+        var raw = (row3[cc.idx] || "").toString().trim();
+        if (!raw) return;
+        var dashIdx = raw.indexOf("-");
+        var subject = raw, teacher = "";
+        if (dashIdx > -1) {
+          subject = applySubjectAlias(normalizeText(raw.slice(0, dashIdx)));
+          teacher = applyTeacherAlias(normalizeText(raw.slice(dashIdx + 1)));
+          teacher = applyTeacherSubjectFixup(teacher, subject);
+        } else {
+          subject = applySubjectAlias(normalizeText(raw));
+        }
+        scheduleByClass[cc.name].push({
+          day: currentDay, buoi: currentBuoi, tiet: tietVal,
+          subject: subject, teacher: teacher, raw: raw,
+          row: r3, col: cc.idx
+        });
+      });
+    }
+
+    var hieulucDate = parseVNDate(hieuluc);
+
+    return {
+      fileName: file.name,
+      lastModified: file.lastModified || 0,
+      truong: truong, hocky: hocky, namhoc: namhoc,
+      hieuluc: hieuluc, hieulucDate: hieulucDate,
+      classes: classCols.map(function (c) { return c.name; }),
+      scheduleByClass: scheduleByClass,
+      // kept so the "next week" export (and the make-up-period feature) can
+      // reproduce and extend the exact original sheet
+      rawRows: rows,
+      hieulucRowIdx: hieulucRowIdx, hieulucColIdx: hieulucColIdx,
+      headerRowIdx: headerRowIdx, tietColIdx: tietColIdx,
+      classColByName: classCols.reduce(function (acc, c) { acc[c.name] = c.idx; return acc; }, {})
+    };
+  }
+
+  /* ============ Parsing: "Phân công giảng dạy" (teaching assignment roster) ============ */
+  // Different shape from TKBLop2b entirely: one row per staff member, columns for
+  // Họ/Tên, Nam/Nữ (birth year → gender), and Số tiết under Khối 10 / Khối 11 / Khối 12.
+  // Columns are located dynamically by header text rather than hardcoded indices,
+  // since the only thing we can rely on staying stable is the labels themselves.
+  function findCellRowCol(rows, matchFn, startRow) {
+    for (var r = startRow || 0; r < rows.length; r++) {
+      var row = rows[r] || [];
+      for (var c = 0; c < row.length; c++) {
+        if (matchFn((row[c] || "").toString().trim())) return { row: r, col: c };
+      }
+    }
+    return null;
+  }
+
+  function parseAssignmentFile(file, wb) {
+    var sheetName = null, rows = null;
+    for (var i = 0; i < wb.SheetNames.length; i++) {
+      var candidateRows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[i]], { header: 1, raw: false, defval: "" });
+      var hit = findCellRowCol(candidateRows, function (v) { return v === "Họ CB.GV"; });
+      if (hit) { sheetName = wb.SheetNames[i]; rows = candidateRows; break; }
+    }
+    if (!rows) return { fileName: file.name, error: "Không tìm thấy bảng phân công (thiếu cột 'Họ CB.GV')." };
+
+    var hoHit = findCellRowCol(rows, function (v) { return v === "Họ CB.GV"; });
+    var hoRow = hoHit.row, hoCol = hoHit.col, tenCol = hoCol + 1;
+
+    var genderHit = findCellRowCol(rows, function (v) { return v === "Nam"; }, hoRow);
+    var namCol = -1, nuCol = -1;
+    if (genderHit) {
+      var gRow = rows[genderHit.row] || [];
+      if ((gRow[genderHit.col + 1] || "").toString().trim() === "Nữ") {
+        namCol = genderHit.col; nuCol = genderHit.col + 1;
+      }
+    }
+
+    var k10Hit = findCellRowCol(rows, function (v) { return /^Khối\s*10\b/i.test(v); });
+    var k11Hit = findCellRowCol(rows, function (v) { return /^Khối\s*11\b/i.test(v); });
+    var k12Hit = findCellRowCol(rows, function (v) { return /^Khối\s*12\b/i.test(v); });
+    if (!k10Hit || !k11Hit || !k12Hit) {
+      return { fileName: file.name, error: "Không xác định được cột 'Khối 10/11/12' trong bảng phân công." };
+    }
+    var t10Col = k10Hit.col + 1, t11Col = k11Hit.col + 1, t12Col = k12Hit.col + 1;
+
+    var staff = [];
+    for (var r = hoRow + 1; r < rows.length; r++) {
+      var row = rows[r] || [];
+      var ho = (row[hoCol] || "").toString().trim();
+      var ten = (row[tenCol] || "").toString().trim();
+      if (!ho || !ten) continue;
+      var nam = namCol > -1 ? (row[namCol] || "").toString().trim() : "";
+      var nu = nuCol > -1 ? (row[nuCol] || "").toString().trim() : "";
+      var gender = nam ? "M" : (nu ? "F" : null);
+      var t10 = parseFloat(row[t10Col]) || 0;
+      var t11 = parseFloat(row[t11Col]) || 0;
+      var t12 = parseFloat(row[t12Col]) || 0;
+      var total = t10 + t11 + t12;
+      if (total <= 0) continue; // admin/office staff with no subject teaching load
+      staff.push({ ho: ho, ten: ten, gender: gender, t10: t10, t11: t11, t12: t12, total: total });
+    }
+    if (!staff.length) {
+      return { fileName: file.name, error: "Không đọc được dòng giáo viên nào trong bảng phân công." };
+    }
+
+    // "LẦN 1 NĂM HỌC 2026-2027 (24/8/2026)" style title → version ordering.
+    var lanNumber = null, lanDate = null;
+    var titleHit = findCellRowCol(rows, function (v) { return /LẦN\s*\d+/i.test(v); });
+    if (titleHit) {
+      var titleText = (rows[titleHit.row][titleHit.col] || "").toString();
+      var lanMatch = titleText.match(/LẦN\s*(\d+)/i);
+      if (lanMatch) lanNumber = parseInt(lanMatch[1], 10);
+      var dateMatch = titleText.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+      if (dateMatch) lanDate = parseVNDate(dateMatch[0]);
+    }
+
+    return {
+      fileName: file.name, lastModified: file.lastModified || 0,
+      sheetName: sheetName, staff: staff,
+      lanNumber: lanNumber, lanDate: lanDate
+    };
+  }
+
+  /* ============ Detect file type & dispatch to the right parser ============ */
+  function parseUploadedFile(file, arrayBuffer) {
+    var wb;
+    try {
+      wb = XLSX.read(arrayBuffer, { type: "array" });
+    } catch (err) {
+      return { fileName: file.name, error: "Không đọc được tệp (định dạng lỗi)." };
+    }
+    if (wb.SheetNames.indexOf("TKBLop2b") > -1) {
+      var tkbResult = parseWorkbookFile(file, wb);
+      tkbResult.docType = "tkb";
+      return tkbResult;
+    }
+    var hasAssignmentHeader = wb.SheetNames.some(function (name) {
+      var rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: "" });
+      return !!findCellRowCol(rows, function (v) { return v === "Họ CB.GV"; });
+    });
+    if (hasAssignmentHeader) {
+      var asResult = parseAssignmentFile(file, wb);
+      asResult.docType = "assignment";
+      return asResult;
+    }
+    return { fileName: file.name, error: "Không nhận diện được loại tệp (không có sheet 'TKBLop2b' và không có cột 'Họ CB.GV')." };
+  }
+
+  /* ============ File intake ============ */
+  function readFileAsArrayBuffer(file) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { resolve(fr.result); };
+      fr.onerror = function () { reject(fr.error); };
+      fr.readAsArrayBuffer(file);
+    });
+  }
+
+  function handleFiles(fileList) {
+    var files = Array.prototype.filter.call(fileList, function (f) {
+      return /\.(xlsx|xls)$/i.test(f.name);
+    });
+    if (!files.length) return;
+
+    Promise.all(files.map(function (f) {
+      return readFileAsArrayBuffer(f).then(function (buf) {
+        return parseUploadedFile(f, buf);
+      }).catch(function () {
+        return { fileName: f.name, error: "Không đọc được tệp." };
+      });
+    })).then(function (results) {
+      var gotAssignment = false;
+      results.forEach(function (res) {
+        if (res.error) {
+          state.skipped.push(res.fileName + " — " + res.error);
+        } else if (res.docType === "assignment") {
+          var dupA = state.assignmentDocs.some(function (d) {
+            return d.fileName === res.fileName && d.lastModified === res.lastModified;
+          });
+          if (!dupA) {
+            state.assignmentDocs.push({
+              fileName: res.fileName, lastModified: res.lastModified, sheetName: res.sheetName,
+              staff: res.staff, lanNumber: res.lanNumber, lanDate: res.lanDate
+            });
+            sortAssignmentDocs();
+            saveAssignmentToStorage();
+          }
+          gotAssignment = true;
+        } else {
+          // avoid exact duplicate (same name + same size signature via fileName+lastModified)
+          var dup = state.versions.some(function (v) {
+            return v.fileName === res.fileName && v.lastModified === res.lastModified;
+          });
+          if (!dup) state.versions.push(res);
+        }
+      });
+      sortVersions();
+      if (state.versions.length) {
+        var names = allClassNames();
+        if (!state.currentClass || names.indexOf(state.currentClass) === -1) {
+          state.currentClass = names[0] || null;
+        }
+      }
+      if (state.versions.length || gotAssignment) render();
+    });
+  }
+
+  function sortVersions() {
+    state.versions.sort(function (a, b) {
+      var ad = a.hieulucDate ? a.hieulucDate.getTime() : -1;
+      var bd = b.hieulucDate ? b.hieulucDate.getTime() : -1;
+      if (bd !== ad) return bd - ad;
+      return (b.lastModified || 0) - (a.lastModified || 0);
+    });
+  }
+
+  /* ============ Cross-file (all versions) aggregation ============ */
+  function allClassNames() {
+    var set = {};
+    state.versions.forEach(function (v) { v.classes.forEach(function (c) { set[c] = true; }); });
+    return Object.keys(set);
+  }
+  // teacher -> subject -> rawSlots[], merged across every loaded file for one class
+  function buildClassAggregate(cls) {
+    var map = {};
+    state.versions.forEach(function (v) {
+      var entries = v.scheduleByClass[cls];
+      if (!entries) return;
+      entries.forEach(function (e) {
+        if (!e.teacher && !e.subject) return;
+        var t = e.teacher || "(không rõ)";
+        var s = e.subject || "(không rõ)";
+        map[t] = map[t] || {};
+        map[t][s] = map[t][s] || [];
+        map[t][s].push({ day: e.day, buoi: e.buoi, tiet: e.tiet });
+      });
+    });
+    return map;
+  }
+  function classAggregateTotalSlots(cls) {
+    var n = 0;
+    state.versions.forEach(function (v) {
+      var entries = v.scheduleByClass[cls];
+      if (entries) n += entries.length;
+    });
+    return n;
+  }
+
+  /* ============ Rendering ============ */
+  function render() {
+    var hasData = state.versions.length > 0 || state.assignmentDocs.length > 0;
+    $("#emptyState").hidden = hasData;
+    $("#sidebar").hidden = !hasData;
+    $("#topbarActions").hidden = !hasData;
+    if (!hasData) {
+      $("#dashboard").hidden = true;
+      $("#teacherDashboard").hidden = true;
+      $("#leaveDashboard").hidden = true;
+      $("#assignmentDashboard").hidden = true;
+      return;
+    }
+
+    var latest = state.versions[0];
+
+    if (latest) {
+      $("#brandSchool").textContent = latest.truong || "Thời khoá biểu";
+      var metaBits = [];
+      if (latest.namhoc) metaBits.push("Năm học " + latest.namhoc);
+      if (latest.hocky) metaBits.push("HK" + latest.hocky);
+      $("#brandSub").textContent = metaBits.join(" · ") || "—";
+    } else {
+      $("#brandSchool").textContent = "Bảng phân công";
+      $("#brandSub").textContent = "Chưa có thời khoá biểu";
+    }
+
+    renderModeToggle();
+    renderLoadedFilesInfo();
+
+    $("#overviewDashboard").hidden = state.viewMode !== "overview";
+    $("#dashboard").hidden = state.viewMode !== "class";
+    $("#teacherDashboard").hidden = state.viewMode !== "teacher";
+    $("#leaveDashboard").hidden = state.viewMode !== "leave";
+    $("#assignmentDashboard").hidden = state.viewMode !== "assignment";
+    $("#classSidebarBlock").hidden = state.viewMode !== "class";
+    $("#teacherSidebarBlock").hidden = state.viewMode !== "teacher";
+
+    if (state.viewMode === "overview") {
+      renderOverview();
+    } else if (state.viewMode === "teacher") {
+      renderTeacherSidebarList();
+      renderTeacherProfile();
+    } else if (state.viewMode === "leave") {
+      renderLeave();
+    } else if (state.viewMode === "assignment") {
+      renderAssignmentComparison();
+    } else {
+      renderClassGroups();
+      renderWarnBanner();
+      renderClassView();
+    }
+  }
+
+  function renderModeToggle() {
+    $all(".mode-btn").forEach(function (btn) {
+      var active = btn.getAttribute("data-mode") === state.viewMode;
+      btn.setAttribute("aria-current", String(active));
+    });
+    var footnote;
+    if (state.viewMode === "teacher") {
+      footnote = Object.keys(buildTeacherAggregate()).length + " giáo viên · " + state.versions.length + " tệp đã tải";
+    } else if (state.viewMode === "overview") {
+      footnote = allClassNames().length + " lớp · " + Object.keys(buildTeacherAggregate()).length + " giáo viên";
+    } else if (state.viewMode === "leave") {
+      footnote = state.absences.length + " tiết đã báo nghỉ";
+    } else if (state.viewMode === "assignment") {
+      footnote = latestAssignmentDoc() ? latestAssignmentDoc().staff.length + " GV · " + state.assignmentDocs.length + " phiên bản phân công" : "Chưa có bảng phân công";
+    } else {
+      footnote = allClassNames().length + " lớp · " + state.versions.length + " tệp đã tải";
+    }
+    $("#sideFootnote").textContent = footnote;
+  }
+
+  /* ============ Overview (workload balance across teachers & classes) ============ */
+  function mean(arr) {
+    if (!arr.length) return 0;
+    return arr.reduce(function (a, b) { return a + b; }, 0) / arr.length;
+  }
+
+  function renderOverview() {
+    var agg = buildTeacherAggregate();
+    var teacherNames = Object.keys(agg);
+    var teacherTotals = teacherNames.map(function (n) {
+      return { name: n, total: teacherOverallStats(n, agg).totalSlots };
+    });
+    teacherTotals.sort(function (a, b) { return b.total - a.total; });
+
+    var classNames = allClassNames();
+    var classTotals = classNames.map(function (c) {
+      return { name: c, total: classAggregateTotalSlots(c) };
+    });
+    classTotals.sort(function (a, b) { return b.total - a.total; });
+
+    var warnBox = $("#overviewWarnBanner");
+    warnBox.innerHTML = "";
+    if (state.skipped.length) {
+      var banner = el("div", { class: "warn-banner" }, []);
+      var icon = el("span", { html: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3 1.5 17h17L10 3Z"/><path d="M10 8v4M10 14.2v.1"/></svg>' });
+      var text = el("div", {}, []);
+      text.appendChild(el("div", { text: "Bỏ qua " + state.skipped.length + " tệp không đọc được:", style: "font-weight:600; margin-bottom:2px;" }));
+      text.appendChild(el("div", { text: state.skipped.join(" · ") }));
+      banner.appendChild(icon);
+      banner.appendChild(text);
+      warnBox.appendChild(banner);
+    }
+
+    $("#overviewSub").textContent = "Gộp từ " + state.versions.length + " tệp đã tải" + (state.versions[0] && state.versions[0].truong ? " · " + state.versions[0].truong : "");
+
+    var tMean = mean(teacherTotals.map(function (t) { return t.total; }));
+    var cMean = mean(classTotals.map(function (c) { return c.total; }));
+
+    var statRow = $("#overviewStatRow");
+    statRow.innerHTML = "";
+    [
+      [teacherTotals.length, "GIÁO VIÊN"],
+      [classTotals.length, "LỚP"],
+      [tMean ? tMean.toFixed(1) : "0", "TB TIẾT / GIÁO VIÊN"],
+      [cMean ? cMean.toFixed(1) : "0", "TB TIẾT / LỚP"]
+    ].forEach(function (s) {
+      var stat = el("div", { class: "stat" }, []);
+      stat.appendChild(el("b", { text: String(s[0]) }));
+      stat.appendChild(el("span", { text: s[1] }));
+      statRow.appendChild(stat);
+    });
+
+    $("#teacherBarsHint").textContent = teacherTotals.length + " giáo viên · trung bình " + (tMean ? tMean.toFixed(1) : "0") + " tiết";
+    $("#classBarsHint").textContent = classTotals.length + " lớp · trung bình " + (cMean ? cMean.toFixed(1) : "0") + " tiết";
+
+    renderBarList($("#teacherBars"), teacherTotals, "teacher");
+    renderBarList($("#classBars"), classTotals, "class");
+  }
+
+  function renderBarList(container, items, kind) {
+    container.innerHTML = "";
+    if (!items.length) {
+      container.appendChild(el("div", { style: "color:var(--ink-faint); font-size:13px; padding:8px 0;", text: "Chưa có dữ liệu." }));
+      return;
+    }
+    var max = Math.max.apply(null, items.map(function (i) { return i.total; }));
+    var avg = mean(items.map(function (i) { return i.total; }));
+    var wrap = el("div", { class: "bar-list" }, []);
+
+    items.forEach(function (item) {
+      var pct = max > 0 ? (item.total / max * 100) : 0;
+      var deviation = avg > 0 ? (item.total - avg) / avg : 0;
+      var barClass = "normal";
+      if (deviation >= 0.15) barClass = "high";
+      else if (deviation <= -0.15) barClass = "low";
+
+      var row = el("div", { class: "bar-row" }, []);
+      var label = el("div", { class: "bar-row__label clickable", text: item.name }, []);
+      label.title = kind === "teacher" ? "Xem chi tiết lịch dạy của " + item.name : "Xem chi tiết lớp " + item.name;
+      label.onclick = kind === "teacher"
+        ? (function (n) { return function () { goToTeacher(n); }; })(item.name)
+        : (function (c) { return function () { state.currentClass = c; state.viewMode = "class"; render(); }; })(item.name);
+      row.appendChild(label);
+
+      var track = el("div", { class: "bar-row__track" }, []);
+      var fill = el("div", { class: "bar-row__fill " + barClass, style: "width:" + pct + "%;" });
+      var avgLine = el("div", { class: "bar-row__avgline", style: "left:" + (max > 0 ? (avg / max * 100) : 0) + "%;" });
+      track.appendChild(fill);
+      track.appendChild(avgLine);
+      row.appendChild(track);
+
+      row.appendChild(el("div", { class: "bar-row__value", text: String(item.total) }));
+      wrap.appendChild(row);
+    });
+    container.appendChild(wrap);
+  }
+
+  function renderLoadedFilesInfo() {
+    var box = $("#loadedFilesInfo");
+    box.innerHTML = "";
+    state.versions.forEach(function (v) {
+      var line = el("div", { style: "margin-bottom:4px; display:flex; justify-content:space-between; gap:6px;" }, []);
+      var so = (v.fileName.match(/SO ?\d+/i) || [])[0] || v.fileName;
+      var left = el("span", { style: "font-weight:600; color:var(--ink);", text: so.toUpperCase() });
+      var right = el("span", { style: "color:var(--ink-faint); font-size:11px;", text: v.hieulucDate ? fmtDate(v.hieulucDate) : (v.hieuluc || "—") });
+      line.appendChild(left);
+      line.appendChild(right);
+      line.title = v.fileName;
+      box.appendChild(line);
+    });
+  }
+
+  function renderClassGroups() {
+    var wrap = $("#classGroups");
+    wrap.innerHTML = "";
+    var q = ($("#classSearch").value || "").trim().toUpperCase();
+    var allNames = allClassNames();
+
+    var grouped = {};
+    allNames.forEach(function (c) {
+      var g = gradeOf(c);
+      (grouped[g] = grouped[g] || []).push(c);
+    });
+    var gradeKeys = Object.keys(grouped).sort();
+
+    gradeKeys.forEach(function (g) {
+      var classesInGrade = grouped[g].filter(function (c) {
+        return !q || c.toUpperCase().indexOf(q) > -1;
+      }).sort(function (a, b) { return a.localeCompare(b, "vi"); });
+      if (!classesInGrade.length) return;
+      var group = el("div", { class: "grade-group" }, []);
+      group.appendChild(el("p", { class: "grade-title", text: (g === "Khác" ? "Khác" : "Khối " + g) }));
+      var list = el("div", { class: "class-list" }, []);
+      classesInGrade.forEach(function (c) {
+        var count = classAggregateTotalSlots(c);
+        var chip = el("button", { class: "class-chip", "aria-current": String(c === state.currentClass) }, []);
+        var nameSpan = el("span", { text: c });
+        var countSpan = el("span", { class: "class-chip__count", text: String(count) });
+        chip.appendChild(nameSpan);
+        chip.appendChild(countSpan);
+        chip.onclick = function () {
+          state.currentClass = c;
+          render();
+        };
+        list.appendChild(chip);
+      });
+      group.appendChild(list);
+      wrap.appendChild(group);
+    });
+  }
+
+  function renderWarnBanner() {
+    var box = $("#warnBanner");
+    box.innerHTML = "";
+    if (!state.skipped.length) return;
+    var banner = el("div", { class: "warn-banner" }, []);
+    var icon = el("span", { html: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3 1.5 17h17L10 3Z"/><path d="M10 8v4M10 14.2v.1"/></svg>' });
+    var text = el("div", {}, []);
+    text.appendChild(el("div", { text: "Bỏ qua " + state.skipped.length + " tệp không đọc được:" , style:"font-weight:600; margin-bottom:2px;"}));
+    text.appendChild(el("div", { text: state.skipped.join(" · ") }));
+    banner.appendChild(icon);
+    banner.appendChild(text);
+    box.appendChild(banner);
+  }
+
+  function renderClassView() {
+    var cls = state.currentClass;
+    if (!cls) {
+      $("#classTitle").textContent = "Chưa chọn lớp";
+      $("#classSub").textContent = "Chọn một lớp ở thanh bên trái";
+      $("#statRow").innerHTML = "";
+      $("#teacherTable").innerHTML = "";
+      $("#teacherHint").textContent = "—";
+      return;
+    }
+    var agg = buildClassAggregate(cls);
+
+    $("#classTitle").textContent = "Lớp " + cls;
+    $("#classSub").textContent = "Tổng hợp từ " + state.versions.length + " tệp đã tải" + (state.versions[0] && state.versions[0].truong ? " · " + state.versions[0].truong : "");
+
+    var subjectSet = {}, totalSlots = 0;
+    var teacherCount = 0;
+    Object.keys(agg).forEach(function (t) {
+      teacherCount++;
+      Object.keys(agg[t]).forEach(function (s) {
+        subjectSet[s] = true;
+        totalSlots += agg[t][s].length;
+      });
+    });
+    var statRow = $("#statRow");
+    statRow.innerHTML = "";
+    [
+      [teacherCount, "GIÁO VIÊN"],
+      [Object.keys(subjectSet).length, "MÔN HỌC"],
+      [totalSlots, "TỔNG SỐ TIẾT (TẤT CẢ TỆP)"]
+    ].forEach(function (s) {
+      var stat = el("div", { class: "stat" }, []);
+      stat.appendChild(el("b", { text: String(s[0]) }));
+      stat.appendChild(el("span", { text: s[1] }));
+      statRow.appendChild(stat);
+    });
+
+    renderTeacherTable(cls, agg);
+  }
+
+  function renderTeacherTable(cls, agg) {
+    var rowsArr = [];
+    Object.keys(agg).forEach(function (teacher) {
+      Object.keys(agg[teacher]).forEach(function (subject) {
+        rowsArr.push({ teacher: teacher, subject: subject, slots: agg[teacher][subject] });
+      });
+    });
+    rowsArr.sort(function (a, b) {
+      var t = a.teacher.localeCompare(b.teacher, "vi");
+      if (t !== 0) return t;
+      return a.subject.localeCompare(b.subject, "vi");
+    });
+
+    $("#teacherHint").textContent = rowsArr.length + " lượt phân công tại lớp " + cls + " (gộp " + state.versions.length + " tệp)";
+
+    var table = $("#teacherTable");
+    table.innerHTML = "";
+    var thead = el("thead", {}, []);
+    var htr = el("tr", {}, []);
+    ["Giáo viên", "Môn dạy", "Tổng số tiết", "Các tiết dạy"].forEach(function (h) {
+      htr.appendChild(el("th", { text: h }));
+    });
+    thead.appendChild(htr);
+    table.appendChild(thead);
+
+    var tbody = el("tbody", {}, []);
+    if (!rowsArr.length) {
+      var tr0 = el("tr", {}, []);
+      var td0 = el("td", { colspan: "4", text: "Chưa có dữ liệu phân công cho lớp này.", style: "color:var(--ink-faint); text-align:center; padding:20px;" });
+      tr0.appendChild(td0);
+      tbody.appendChild(tr0);
+    } else {
+      rowsArr.forEach(function (row) {
+        var tr = el("tr", {}, []);
+        var isKnown = row.teacher && row.teacher !== "(không rõ)";
+        var nameTd = el("td", { class: "tname" + (isKnown ? " clickable" : "") }, []);
+        nameTd.textContent = row.teacher;
+        if (isKnown) {
+          nameTd.title = "Xem toàn bộ lịch dạy của " + row.teacher + " (tất cả tệp)";
+          nameTd.onclick = (function (teacherName) { return function () { goToTeacher(teacherName); }; })(row.teacher);
+        }
+        tr.appendChild(nameTd);
+        var subjTd = el("td", {}, []);
+        subjTd.appendChild(el("span", { class: "tsubj", text: row.subject }));
+        tr.appendChild(subjTd);
+        tr.appendChild(el("td", { class: "tcount", text: String(row.slots.length) }));
+        var slotsTd = el("td", {}, []);
+        var slotsWrap = el("div", { class: "tslots" }, []);
+        renderSlotChips(slotsWrap, row.slots);
+        slotsTd.appendChild(slotsWrap);
+        tr.appendChild(slotsTd);
+        tbody.appendChild(tr);
+      });
+    }
+    table.appendChild(tbody);
+  }
+
+  /* ============ Teacher-wide aggregate (all files, all versions) ============ */
+  var teacherAggCache = null;
+  var teacherAggCacheKey = null;
+
+  function buildTeacherAggregate() {
+    var cacheKey = state.versions.map(function (v) { return v.fileName + "|" + v.lastModified; }).join(",");
+    if (teacherAggCache && teacherAggCacheKey === cacheKey) return teacherAggCache;
+
+    // teacher -> { versions: { versionIdx: { className: { subject: [slots] } } } }
+    var agg = {};
+    state.versions.forEach(function (v, vi) {
+      v.classes.forEach(function (cls) {
+        var entries = v.scheduleByClass[cls] || [];
+        entries.forEach(function (e) {
+          var t = e.teacher || "(không rõ)";
+          if (!agg[t]) agg[t] = { versions: {} };
+          if (!agg[t].versions[vi]) agg[t].versions[vi] = {};
+          if (!agg[t].versions[vi][cls]) agg[t].versions[vi][cls] = {};
+          var subj = e.subject || "(không rõ)";
+          if (!agg[t].versions[vi][cls][subj]) agg[t].versions[vi][cls][subj] = [];
+          agg[t].versions[vi][cls][subj].push({ day: e.day, buoi: e.buoi, tiet: e.tiet });
+        });
+      });
+    });
+    teacherAggCache = agg;
+    teacherAggCacheKey = cacheKey;
+    return agg;
+  }
+
+  function teacherOverallStats(teacherName, agg) {
+    var rec = agg[teacherName];
+    var versionIdxs = Object.keys(rec.versions);
+    var classSet = {}, subjSet = {}, totalSlots = 0;
+    versionIdxs.forEach(function (vi) {
+      Object.keys(rec.versions[vi]).forEach(function (cls) {
+        classSet[cls] = true;
+        Object.keys(rec.versions[vi][cls]).forEach(function (subj) {
+          subjSet[subj] = true;
+          totalSlots += rec.versions[vi][cls][subj].length;
+        });
+      });
+    });
+    return {
+      versionCount: versionIdxs.length,
+      classCount: Object.keys(classSet).length,
+      subjectCount: Object.keys(subjSet).length,
+      totalSlots: totalSlots
+    };
+  }
+
+  function goToTeacher(name) {
+    state.viewMode = "teacher";
+    state.currentTeacher = name;
+    render();
+    var main = $("#main");
+    if (main) main.scrollTop = 0;
+  }
+
+  function renderTeacherSidebarList() {
+    var agg = buildTeacherAggregate();
+    var names = Object.keys(agg).sort(function (a, b) { return a.localeCompare(b, "vi"); });
+    var q = ($("#teacherSearch").value || "").trim().toUpperCase();
+    var filtered = names.filter(function (n) { return !q || n.toUpperCase().indexOf(q) > -1; });
+
+    var wrap = $("#teacherList");
+    wrap.innerHTML = "";
+    filtered.forEach(function (name) {
+      var stats = teacherOverallStats(name, agg);
+      var chip = el("button", { class: "class-chip", "aria-current": String(name === state.currentTeacher) }, []);
+      chip.appendChild(el("span", { text: name }));
+      chip.appendChild(el("span", { class: "class-chip__count", text: String(stats.totalSlots) }));
+      chip.onclick = function () { goToTeacher(name); };
+      wrap.appendChild(chip);
+    });
+
+    if (!filtered.length) {
+      wrap.appendChild(el("div", { style: "font-size:12px; color:var(--ink-faint); padding:8px 2px;", text: "Không tìm thấy giáo viên phù hợp." }));
+    }
+  }
+
+  // teacher's per-version record -> merged {class: {subject: rawSlots[]}} across every loaded file
+  function mergeTeacherAcrossVersions(rec) {
+    var merged = {};
+    Object.keys(rec.versions).forEach(function (vi) {
+      Object.keys(rec.versions[vi]).forEach(function (cls) {
+        merged[cls] = merged[cls] || {};
+        Object.keys(rec.versions[vi][cls]).forEach(function (subj) {
+          merged[cls][subj] = (merged[cls][subj] || []).concat(rec.versions[vi][cls][subj]);
+        });
+      });
+    });
+    return merged;
+  }
+
+  function renderTeacherProfile() {
+    var agg = buildTeacherAggregate();
+    var names = Object.keys(agg).sort(function (a, b) { return a.localeCompare(b, "vi"); });
+    if (!state.currentTeacher || !agg[state.currentTeacher]) {
+      state.currentTeacher = names[0] || null;
+    }
+    var name = state.currentTeacher;
+
+    if (!name) {
+      $("#teacherTitle").textContent = "Chưa có giáo viên";
+      $("#teacherSub").textContent = "—";
+      $("#teacherStatRow").innerHTML = "";
+      $("#teacherClassTable").innerHTML = "";
+      $("#teacherPanelHint").textContent = "—";
+      return;
+    }
+
+    var rec = agg[name];
+    var stats = teacherOverallStats(name, agg);
+
+    // which loaded files this teacher appears in, newest first
+    var fileLabels = state.versions
+      .map(function (v, vi) { return rec.versions[vi] ? v : null; })
+      .filter(Boolean)
+      .map(function (v) {
+        var so = (v.fileName.match(/SO ?\d+/i) || [])[0] || v.fileName;
+        return so.toUpperCase() + " (" + (v.hieulucDate ? fmtDate(v.hieulucDate) : (v.hieuluc || "—")) + ")";
+      });
+
+    $("#teacherTitle").textContent = name;
+    $("#teacherSub").textContent = "Tổng hợp từ " + stats.versionCount + "/" + state.versions.length + " tệp đã tải" + (fileLabels.length ? ": " + fileLabels.join(" · ") : "");
+
+    var statRow = $("#teacherStatRow");
+    statRow.innerHTML = "";
+    [
+      [stats.versionCount, "SỐ TỆP CÓ DẠY"],
+      [stats.classCount, "LỚP TỪNG DẠY"],
+      [stats.subjectCount, "MÔN TỪNG DẠY"],
+      [stats.totalSlots, "TỔNG SỐ TIẾT (TẤT CẢ TỆP)"]
+    ].forEach(function (s) {
+      var stat = el("div", { class: "stat" }, []);
+      stat.appendChild(el("b", { text: String(s[0]) }));
+      stat.appendChild(el("span", { text: s[1] }));
+      statRow.appendChild(stat);
+    });
+
+    var warnBox = $("#teacherWarnBanner");
+    warnBox.innerHTML = "";
+    if (state.skipped.length) {
+      var banner = el("div", { class: "warn-banner" }, []);
+      var icon = el("span", { html: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3 1.5 17h17L10 3Z"/><path d="M10 8v4M10 14.2v.1"/></svg>' });
+      var text = el("div", {}, []);
+      text.appendChild(el("div", { text: "Bỏ qua " + state.skipped.length + " tệp không đọc được:", style: "font-weight:600; margin-bottom:2px;" }));
+      text.appendChild(el("div", { text: state.skipped.join(" · ") }));
+      banner.appendChild(icon);
+      banner.appendChild(text);
+      warnBox.appendChild(banner);
+    }
+
+    var merged = mergeTeacherAcrossVersions(rec);
+    var classNames = Object.keys(merged).sort(function (a, b) { return a.localeCompare(b, "vi"); });
+
+    var rowsArr = [];
+    classNames.forEach(function (cls) {
+      Object.keys(merged[cls]).sort(function (a, b) { return a.localeCompare(b, "vi"); }).forEach(function (subj) {
+        rowsArr.push({ cls: cls, subject: subj, slots: merged[cls][subj] });
+      });
+    });
+
+    $("#teacherPanelHint").textContent = rowsArr.length + " lượt phân công · gộp " + stats.versionCount + " tệp";
+
+    var table = $("#teacherClassTable");
+    table.innerHTML = "";
+    var thead = el("thead", {}, []);
+    var htr = el("tr", {}, []);
+    ["Lớp", "Môn dạy", "Tổng số tiết", "Các tiết dạy"].forEach(function (h) {
+      htr.appendChild(el("th", { text: h }));
+    });
+    thead.appendChild(htr);
+    table.appendChild(thead);
+
+    var tbody = el("tbody", {}, []);
+    if (!rowsArr.length) {
+      var tr0 = el("tr", {}, []);
+      tr0.appendChild(el("td", { colspan: "4", text: "Chưa có dữ liệu.", style: "color:var(--ink-faint); text-align:center; padding:20px;" }));
+      tbody.appendChild(tr0);
+    } else {
+      rowsArr.forEach(function (row) {
+        var tr = el("tr", {}, []);
+        var clsTd = el("td", {}, []);
+        clsTd.appendChild(el("span", { class: "tclass", text: row.cls }));
+        tr.appendChild(clsTd);
+        var subjTd = el("td", {}, []);
+        subjTd.appendChild(el("span", { class: "tsubj", text: row.subject }));
+        tr.appendChild(subjTd);
+        tr.appendChild(el("td", { class: "tcount", text: String(row.slots.length) }));
+        var slotsTd = el("td", {}, []);
+        var slotsWrap = el("div", { class: "tslots" }, []);
+        renderSlotChips(slotsWrap, row.slots);
+        slotsTd.appendChild(slotsWrap);
+        tr.appendChild(slotsTd);
+        tbody.appendChild(tr);
+      });
+    }
+    table.appendChild(tbody);
+  }
+
+  /* ============ Leave / substitute-teacher planning ============ */
+  // Uses ONLY the latest loaded file (state.versions[0]) as "the current schedule" —
+  // summing across every file (like the other views do for historical totals) would
+  // not make sense here since we need this week's actual slots.
+  var ABSENCE_STORAGE_KEY = "tkb_absences_v1";
+
+  function loadAbsencesFromStorage() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(ABSENCE_STORAGE_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) state.absences = parsed;
+      }
+    } catch (e) { /* storage unavailable — ignore, feature still works for this session */ }
+  }
+  function saveAbsencesToStorage() {
+    try {
+      if (window.localStorage) window.localStorage.setItem(ABSENCE_STORAGE_KEY, JSON.stringify(state.absences));
+    } catch (e) { /* ignore — e.g. private browsing with storage disabled */ }
+  }
+
+  function latestVersion() { return state.versions.length ? state.versions[0] : null; }
+
+  // teacher -> sorted [{day,buoi,tiet,cls,subject}] from the latest file only
+  var latestSlotsCache = null, latestSlotsCacheKey = null;
+  function buildLatestTeacherSlots() {
+    var v = latestVersion();
+    var cacheKey = v ? v.fileName + "|" + v.lastModified : "";
+    if (latestSlotsCache && latestSlotsCacheKey === cacheKey) return latestSlotsCache;
+    var map = {};
+    if (v) {
+      v.classes.forEach(function (cls) {
+        (v.scheduleByClass[cls] || []).forEach(function (e) {
+          if (!e.teacher) return;
+          map[e.teacher] = map[e.teacher] || [];
+          map[e.teacher].push({ day: e.day, buoi: e.buoi, tiet: e.tiet, cls: cls, subject: e.subject });
+        });
+      });
+      Object.keys(map).forEach(function (t) { map[t] = sortSlots(map[t]); });
+    }
+    latestSlotsCache = map;
+    latestSlotsCacheKey = cacheKey;
+    return map;
+  }
+
+  // "day|buoi|tiet" -> {teacherName: true} — who's already teaching at that slot, latest file only
+  function buildLatestOccupancy() {
+    var slots = buildLatestTeacherSlots();
+    var occ = {};
+    Object.keys(slots).forEach(function (t) {
+      slots[t].forEach(function (s) {
+        var key = s.day + "|" + s.buoi + "|" + s.tiet;
+        occ[key] = occ[key] || {};
+        occ[key][t] = true;
+      });
+    });
+    return occ;
+  }
+
+  function findSubstituteCandidates(occ, teacherSlots, day, buoi, tiet, subject, excludeTeacher) {
+    var key = day + "|" + buoi + "|" + tiet;
+    var busy = occ[key] || {};
+    var allOther = Object.keys(teacherSlots).filter(function (t) { return t !== excludeTeacher; });
+    var teachesSameSubject = allOther.filter(function (t) {
+      return teacherSlots[t].some(function (s) { return s.subject === subject; });
+    });
+    var sameSubject = teachesSameSubject.filter(function (t) { return !busy[t]; });
+    var busySameSubject = teachesSameSubject.filter(function (t) { return busy[t]; }).map(function (t) {
+      var slot = teacherSlots[t].filter(function (s) { return s.day === day && s.buoi === buoi && s.tiet === tiet; })[0];
+      return { name: t, cls: slot ? slot.cls : "?" };
+    });
+    var others = allOther.filter(function (t) { return !busy[t] && sameSubject.indexOf(t) === -1; });
+    sameSubject.sort(function (a, b) { return a.localeCompare(b, "vi"); });
+    others.sort(function (a, b) { return a.localeCompare(b, "vi"); });
+    busySameSubject.sort(function (a, b) { return a.name.localeCompare(b.name, "vi"); });
+    return { sameSubject: sameSubject, others: others, busySameSubject: busySameSubject };
+  }
+
+  // Special non-teacher fallback values a row's substitute can hold when nobody is free.
+  var FALLBACK_SELF_STUDY = "__self_study__";
+  var FALLBACK_CUSTOM = "__custom__";
+  var FALLBACK_MAKEUP = "__makeup__";
+  function isRowCovered(a) {
+    if (!a.substitute) return false;
+    if (a.substitute === FALLBACK_SELF_STUDY) return true;
+    if (a.substitute === FALLBACK_CUSTOM) return !!(a.customNote && a.customNote.trim());
+    if (a.substitute === FALLBACK_MAKEUP) return !!a.makeupSlot;
+    return true; // a real teacher name
+  }
+
+  function absenceSlotKey(a) { return a.teacher + "|" + a.day + "|" + a.buoi + "|" + a.tiet + "|" + (a.weekLabel || ""); }
+
+  // "day|buoi|tiet" -> row index in the raw sheet — walks the grid the same way
+  // parsing does, so it finds a row even for a class that has nothing scheduled
+  // there (which is exactly what makes that slot available for a make-up period).
+  var slotRowIndexCache = null, slotRowIndexCacheKey = null;
+  function buildSlotRowIndex(v) {
+    var cacheKey = v.fileName + "|" + v.lastModified;
+    if (slotRowIndexCache && slotRowIndexCacheKey === cacheKey) return slotRowIndexCache;
+    var map = {};
+    var curDay = "", curBuoi = "";
+    for (var r = v.headerRowIdx + 1; r < v.rawRows.length; r++) {
+      var row = v.rawRows[r] || [];
+      var dayVal = (row[0] || "").toString().trim();
+      var buoiVal = (row[1] || "").toString().trim();
+      var tietVal = (row[v.tietColIdx] || "").toString().trim();
+      if (dayVal) curDay = dayVal;
+      if (buoiVal) curBuoi = buoiVal.toUpperCase();
+      if (!tietVal) continue;
+      map[curDay + "|" + curBuoi + "|" + tietVal] = r;
+    }
+    slotRowIndexCache = map;
+    slotRowIndexCacheKey = cacheKey;
+    return map;
+  }
+
+  // Candidate slots to make up a missed period next week: a day/buổi/tiết where
+  // BOTH the class (no subject scheduled there) and the teacher (not teaching
+  // elsewhere then) are free, based on the latest TKB's recurring weekly pattern.
+  // Ranked so the FIRST result (the one auto-picked) is a genuinely sensible
+  // choice rather than just "earliest free slot": avoid days that would give the
+  // class two periods of the same subject, prefer days the class already has
+  // fewer periods on (don't pile more onto an already-heavy day), then prefer
+  // sooner in the week so the make-up happens promptly.
+  function findMakeupCandidates(cls, teacher, subject) {
+    var v = latestVersion();
+    if (!v) return [];
+    var slotRows = buildSlotRowIndex(v);
+    var occ = buildLatestOccupancy();
+    var classEntries = v.scheduleByClass[cls] || [];
+    var classBusy = {};
+    var dayLoad = {};       // day -> how many periods this class already has that day
+    var daySubjects = {};   // day -> {subject: true} already on that day for this class
+    classEntries.forEach(function (e) {
+      classBusy[e.day + "|" + e.buoi + "|" + e.tiet] = true;
+      dayLoad[e.day] = (dayLoad[e.day] || 0) + 1;
+      daySubjects[e.day] = daySubjects[e.day] || {};
+      if (e.subject) daySubjects[e.day][e.subject] = true;
+    });
+    var out = [];
+    Object.keys(slotRows).forEach(function (key) {
+      if (classBusy[key]) return;
+      var busyTeachers = occ[key] || {};
+      if (busyTeachers[teacher]) return;
+      var parts = key.split("|");
+      var day = parts[0], buoi = parts[1], tiet = parts[2];
+      out.push({
+        day: day, buoi: buoi, tiet: tiet,
+        sameSubjectClash: !!(subject && daySubjects[day] && daySubjects[day][subject]),
+        dayLoad: dayLoad[day] || 0
+      });
+    });
+    out.sort(function (a, b) {
+      if (a.sameSubjectClash !== b.sameSubjectClash) return a.sameSubjectClash ? 1 : -1;
+      if (a.dayLoad !== b.dayLoad) return a.dayLoad - b.dayLoad;
+      var d = dayIdx(a.day) - dayIdx(b.day);
+      if (d !== 0) return d;
+      var bu = buoiIdx(a.buoi) - buoiIdx(b.buoi);
+      if (bu !== 0) return bu;
+      return (+a.tiet) - (+b.tiet);
+    });
+    return out;
+  }
+
+  function renderLeave() {
+    var v = latestVersion();
+    var warnBox = $("#leaveWarnBanner");
+    warnBox.innerHTML = "";
+    if (state.skipped.length) {
+      var banner = el("div", { class: "warn-banner" }, []);
+      var icon = el("span", { html: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3 1.5 17h17L10 3Z"/><path d="M10 8v4M10 14.2v.1"/></svg>' });
+      var text = el("div", {}, []);
+      text.appendChild(el("div", { text: "Bỏ qua " + state.skipped.length + " tệp không đọc được:", style: "font-weight:600; margin-bottom:2px;" }));
+      text.appendChild(el("div", { text: state.skipped.join(" · ") }));
+      banner.appendChild(icon);
+      banner.appendChild(text);
+      warnBox.appendChild(banner);
+    }
+
+    var so = v ? ((v.fileName.match(/SO ?\d+/i) || [])[0] || v.fileName) : "";
+    $("#leaveSub").textContent = v
+      ? "Dựa trên lịch mới nhất: " + so.toUpperCase() + " · hiệu lực " + (v.hieulucDate ? fmtDate(v.hieulucDate) : (v.hieuluc || "—"))
+      : "Chưa có dữ liệu";
+
+    renderLeaveTeacherSelect();
+    renderLeaveSlotChecklist();
+    renderAbsenceTable();
+  }
+
+  function renderLeaveTeacherSelect() {
+    var sel = $("#leaveTeacherSelect");
+    var slots = buildLatestTeacherSlots();
+    var names = Object.keys(slots).sort(function (a, b) { return a.localeCompare(b, "vi"); });
+    var prevValue = sel.value;
+    sel.innerHTML = "";
+    if (!names.length) {
+      sel.appendChild(el("option", { value: "" }, [])).textContent = "— Chưa có dữ liệu —";
+      return;
+    }
+    names.forEach(function (n) {
+      var opt = el("option", { value: n }, []);
+      opt.textContent = n;
+      sel.appendChild(opt);
+    });
+    if (!state.leaveTeacher || names.indexOf(state.leaveTeacher) === -1) {
+      state.leaveTeacher = names.indexOf(prevValue) > -1 ? prevValue : names[0];
+    }
+    sel.value = state.leaveTeacher;
+    sel.onchange = function () {
+      state.leaveTeacher = sel.value;
+      renderLeaveSlotChecklist();
+    };
+  }
+
+  function renderLeaveSlotChecklist() {
+    var box = $("#leaveSlotChecklist");
+    box.innerHTML = "";
+    var slots = buildLatestTeacherSlots();
+    var teacherSlots = slots[state.leaveTeacher] || [];
+    if (!teacherSlots.length) {
+      box.appendChild(el("div", { class: "slot-check-empty", text: "Giáo viên này không có tiết nào trong lịch mới nhất." }));
+      return;
+    }
+    teacherSlots.forEach(function (s, i) {
+      var label = el("label", { class: "slot-check-item" }, []);
+      var cb = el("input", { type: "checkbox" });
+      cb.dataset.idx = String(i);
+      var main = el("span", { class: "sc-main", text: slotLabel(s.day, s.buoi, s.tiet) + " — " + s.cls });
+      var sub = el("span", { class: "sc-sub", text: s.subject });
+      label.appendChild(cb);
+      label.appendChild(main);
+      label.appendChild(sub);
+      box.appendChild(label);
+    });
+  }
+
+  function addAbsencesFromChecklist() {
+    var teacher = state.leaveTeacher;
+    if (!teacher) return;
+    var slots = buildLatestTeacherSlots()[teacher] || [];
+    var weekLabel = ($("#leaveWeekLabel").value || "").trim();
+    var checked = $all("#leaveSlotChecklist input[type=checkbox]:checked");
+    if (!checked.length) return;
+
+    checked.forEach(function (cb) {
+      var s = slots[+cb.dataset.idx];
+      if (!s) return;
+      var candidate = { teacher: teacher, day: s.day, buoi: s.buoi, tiet: s.tiet, cls: s.cls, subject: s.subject, weekLabel: weekLabel, substitute: "" };
+      var key = absenceSlotKey(candidate);
+      var dup = state.absences.some(function (a) { return absenceSlotKey(a) === key; });
+      if (!dup) {
+        candidate.id = "abs_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+        state.absences.push(candidate);
+      }
+    });
+    saveAbsencesToStorage();
+    $all("#leaveSlotChecklist input[type=checkbox]").forEach(function (cb) { cb.checked = false; });
+    renderAbsenceTable();
+    renderModeToggle();
+  }
+
+  function renderAbsenceTable() {
+    var occ = buildLatestOccupancy();
+    var teacherSlots = buildLatestTeacherSlots();
+    var quotaMap = getAssignmentQuotaMap(); // {} if no Phân công doc loaded yet
+
+    var sorted = state.absences.slice().sort(function (a, b) {
+      var d = dayIdx(a.day) - dayIdx(b.day);
+      if (d !== 0) return d;
+      var bu = buoiIdx(a.buoi) - buoiIdx(b.buoi);
+      if (bu !== 0) return bu;
+      return (+a.tiet) - (+b.tiet);
+    });
+
+    var missing = sorted.filter(function (a) { return !isRowCovered(a); }).length;
+    var covered = sorted.length - missing;
+
+    $("#absenceHint").textContent = sorted.length + " tiết đã báo nghỉ · " + covered + " đã có người dạy thay" + (missing ? " · còn thiếu " + missing : "");
+
+    var statRow = $("#leaveStatRow");
+    statRow.innerHTML = "";
+    [
+      [sorted.length, "TIẾT BÁO NGHỈ"],
+      [covered, "ĐÃ CÓ GV DẠY THAY"],
+      [missing, "CÒN THIẾU"]
+    ].forEach(function (s, idx) {
+      var stat = el("div", { class: "stat" }, []);
+      var b = el("b", { text: String(s[0]) });
+      if (idx === 2 && s[0] > 0) b.style.color = "var(--danger)";
+      stat.appendChild(b);
+      stat.appendChild(el("span", { text: s[1] }));
+      statRow.appendChild(stat);
+    });
+
+    var table = $("#absenceTable");
+    table.innerHTML = "";
+    var thead = el("thead", {}, []);
+    var htr = el("tr", {}, []);
+    ["Lớp", "Thứ · Buổi · Tiết", "Môn", "GV báo nghỉ", "GV dạy thay (đề xuất)", ""].forEach(function (h) {
+      htr.appendChild(el("th", { text: h }));
+    });
+    thead.appendChild(htr);
+    table.appendChild(thead);
+
+    var tbody = el("tbody", {}, []);
+    if (!sorted.length) {
+      var tr0 = el("tr", {}, []);
+      tr0.appendChild(el("td", { colspan: "6", text: "Chưa có giáo viên nào báo nghỉ. Thêm ở form phía trên.", style: "color:var(--ink-faint); text-align:center; padding:20px;" }));
+      tbody.appendChild(tr0);
+    } else {
+      sorted.forEach(function (a) {
+        var tr = el("tr", {}, []);
+
+        var clsTd = el("td", {}, []);
+        clsTd.appendChild(el("span", { class: "tclass", text: a.cls }));
+        tr.appendChild(clsTd);
+
+        tr.appendChild(el("td", { text: slotLabel(a.day, a.buoi, a.tiet) }));
+
+        var subjTd = el("td", {}, []);
+        subjTd.appendChild(el("span", { class: "tsubj", text: a.subject }));
+        tr.appendChild(subjTd);
+
+        var teacherTd = el("td", {}, []);
+        teacherTd.appendChild(document.createTextNode(a.teacher));
+        if (a.weekLabel) teacherTd.appendChild(el("span", { class: "absence-week-tag", text: a.weekLabel }));
+        var q = quotaMap[a.teacher];
+        if (q) {
+          var qDiff = q.core - q.quota;
+          var qColor = qDiff > 0 ? "var(--danger)" : (qDiff < 0 ? "var(--sang)" : "var(--ink-faint)");
+          teacherTd.appendChild(el("span", {
+            class: "absence-week-tag", style: "color:" + qColor + ";",
+            text: "Tuần sau: " + q.core + "/" + q.quota + " tiết" + (qDiff !== 0 ? " (" + (qDiff > 0 ? "+" : "") + qDiff + ")" : "")
+          }));
+        }
+        tr.appendChild(teacherTd);
+
+        var substTd = el("td", {}, []);
+        var candidates = findSubstituteCandidates(occ, teacherSlots, a.day, a.buoi, a.tiet, a.subject, a.teacher);
+        var hasFree = candidates.sameSubject.length || candidates.others.length;
+
+        var select = el("select", { class: "subst-select" + (!isRowCovered(a) ? " missing" : "") }, []);
+        var optNone = el("option", { value: "" }, []);
+        optNone.textContent = "— Chưa chọn —";
+        select.appendChild(optNone);
+        if (candidates.sameSubject.length) {
+          var og1 = el("optgroup", { label: "Cùng môn " + a.subject + " · đang trống tiết" }, []);
+          candidates.sameSubject.forEach(function (n) {
+            var o = el("option", { value: n }, []); o.textContent = n; og1.appendChild(o);
+          });
+          select.appendChild(og1);
+        }
+        if (candidates.others.length) {
+          var og2 = el("optgroup", { label: "Giáo viên khác đang trống tiết" }, []);
+          candidates.others.forEach(function (n) {
+            var o = el("option", { value: n }, []); o.textContent = n; og2.appendChild(o);
+          });
+          select.appendChild(og2);
+        }
+        var og3 = el("optgroup", { label: "Phương án khác (khi không còn ai trống tiết)" }, []);
+        var oMakeup = el("option", { value: FALLBACK_MAKEUP }, []);
+        oMakeup.textContent = "Bù vào tuần sau (cùng GV)";
+        og3.appendChild(oMakeup);
+        var oSelfStudy = el("option", { value: FALLBACK_SELF_STUDY }, []);
+        oSelfStudy.textContent = "Cho HS tự học có giám sát";
+        og3.appendChild(oSelfStudy);
+        var oCustom = el("option", { value: FALLBACK_CUSTOM }, []);
+        oCustom.textContent = "Người khác (tự nhập tên)…";
+        og3.appendChild(oCustom);
+        select.appendChild(og3);
+
+        select.value = a.substitute || "";
+        select.onchange = (function (absence) {
+          return function () {
+            absence.substitute = select.value;
+            // pre-fill the most sensible makeup slot right away so picking "Bù vào
+            // tuần sau" is a single click in the common case — still overridable below.
+            if (select.value === FALLBACK_MAKEUP && !absence.makeupSlot) {
+              var firstCandidate = findMakeupCandidates(absence.cls, absence.teacher, absence.subject)[0];
+              if (firstCandidate) absence.makeupSlot = firstCandidate;
+            }
+            saveAbsencesToStorage();
+            renderAbsenceTable();
+          };
+        })(a);
+        substTd.appendChild(select);
+
+        if (a.substitute === FALLBACK_MAKEUP) {
+          var qImpact = quotaMap[a.teacher];
+          if (qImpact) {
+            var afterCount = qImpact.core + 1;
+            var afterDiff = afterCount - qImpact.quota;
+            var impactColor = afterDiff > 0 ? "var(--danger)" : "var(--sang)";
+            var impactMsg = "Nếu thêm tiết bù: " + a.teacher + " sẽ có " + afterCount + " tiết tuần sau (định mức " + qImpact.quota + ") → " +
+              (afterDiff > 0 ? "vượt thêm " + afterDiff + " tiết" : (afterDiff === 0 ? "vừa đúng định mức" : "vẫn còn dưới định mức " + Math.abs(afterDiff) + " tiết"));
+            substTd.appendChild(el("div", { style: "font-size:11px; color:" + impactColor + "; margin-top:6px;", text: impactMsg }));
+          } else {
+            substTd.appendChild(el("div", { style: "font-size:11px; color:var(--ink-faint); margin-top:6px;", text: "Chưa có bảng phân công để đối chiếu định mức — tải ở tab \"Phân công\" để xem tác động." }));
+          }
+          var candidates2 = findMakeupCandidates(a.cls, a.teacher, a.subject);
+          var makeupSel = el("select", { class: "subst-select" + (!a.makeupSlot ? " missing" : ""), style: "margin-top:6px;" }, []);
+          var mNone = el("option", { value: "" }, []); mNone.textContent = "— Chọn tiết bù (tuần sau) —";
+          makeupSel.appendChild(mNone);
+          candidates2.forEach(function (s) {
+            var val = s.day + "|" + s.buoi + "|" + s.tiet;
+            var o = el("option", { value: val }, []);
+            o.textContent = slotLabel(s.day, s.buoi, s.tiet) +
+              (s.sameSubjectClash ? " (trùng môn cùng ngày)" : "") +
+              (!s.sameSubjectClash && s.dayLoad === 0 ? " (ngày trống)" : "");
+            if (a.makeupSlot && a.makeupSlot.day === s.day && a.makeupSlot.buoi === s.buoi && a.makeupSlot.tiet === s.tiet) o.selected = true;
+            makeupSel.appendChild(o);
+          });
+          makeupSel.onchange = (function (absence) {
+            return function () {
+              if (!makeupSel.value) { absence.makeupSlot = null; }
+              else {
+                var parts = makeupSel.value.split("|");
+                absence.makeupSlot = { day: parts[0], buoi: parts[1], tiet: parts[2] };
+              }
+              saveAbsencesToStorage();
+              renderAbsenceTable();
+            };
+          })(a);
+          substTd.appendChild(makeupSel);
+          if (!candidates2.length) {
+            substTd.appendChild(el("div", { style: "font-size:11px; color:var(--danger); margin-top:4px;", text: "Không tìm được tiết trống nào cho cả lớp " + a.cls + " và GV " + a.teacher + " trong tuần sau." }));
+          }
+        }
+        if (a.substitute === FALLBACK_CUSTOM) {
+          var customInput = el("input", { class: "search", type: "text", placeholder: "VD: Giám thị, BGH…", style: "width:100%; margin-top:6px;" });
+          customInput.value = a.customNote || "";
+          customInput.oninput = (function (absence) {
+            return function () { absence.customNote = customInput.value; };
+          })(a);
+          customInput.onblur = (function (absence) {
+            return function () { saveAbsencesToStorage(); renderAbsenceTable(); };
+          })(a);
+          substTd.appendChild(customInput);
+        }
+
+        if (!hasFree) {
+          var warn = el("div", { style: "font-size:11px; color:var(--danger); margin-top:6px;" }, []);
+          warn.appendChild(document.createTextNode("Không còn GV nào trống tiết này."));
+          if (candidates.busySameSubject.length) {
+            var names = candidates.busySameSubject.map(function (b) { return b.name + " (đang dạy " + b.cls + ")"; }).join(", ");
+            warn.appendChild(el("div", { style: "color:var(--ink-faint); margin-top:2px;", text: "Có thể xin đổi tiết với GV cùng môn đang bận: " + names }));
+          }
+          substTd.appendChild(warn);
+        }
+        tr.appendChild(substTd);
+
+        var removeTd = el("td", {}, []);
+        var removeBtn = el("button", { class: "absence-remove", title: "Xoá khỏi danh sách" }, []);
+        removeBtn.textContent = "✕";
+        removeBtn.onclick = (function (id) {
+          return function () {
+            state.absences = state.absences.filter(function (x) { return x.id !== id; });
+            saveAbsencesToStorage();
+            renderAbsenceTable();
+            renderModeToggle();
+          };
+        })(a.id);
+        removeTd.appendChild(removeBtn);
+        tr.appendChild(removeTd);
+
+        tbody.appendChild(tr);
+      });
+    }
+    table.appendChild(tbody);
+  }
+
+  /* ============ Assignment-roster ↔ TKB comparison ============ */
+  var ASSIGNMENT_STORAGE_KEY = "tkb_assignment_v1";
+  var ASSIGNMENT_OVERRIDES_KEY = "tkb_assignment_overrides_v1";
+
+  function loadAssignmentFromStorage() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(ASSIGNMENT_STORAGE_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          state.assignmentDocs = parsed;
+        } else if (parsed && parsed.staff) {
+          // migrate the old single-doc storage shape from before multi-Lần support
+          state.assignmentDocs = [parsed];
+        }
+        // dates come back from JSON as strings — restore them to Date objects
+        state.assignmentDocs.forEach(function (d) { if (d.lanDate) d.lanDate = new Date(d.lanDate); });
+        sortAssignmentDocs();
+      }
+      var rawOv = window.localStorage && window.localStorage.getItem(ASSIGNMENT_OVERRIDES_KEY);
+      if (rawOv) state.assignmentOverrides = JSON.parse(rawOv);
+    } catch (e) { /* ignore */ }
+  }
+  function saveAssignmentToStorage() {
+    try {
+      if (window.localStorage) window.localStorage.setItem(ASSIGNMENT_STORAGE_KEY, JSON.stringify(state.assignmentDocs));
+    } catch (e) { /* ignore */ }
+  }
+  function sortAssignmentDocs() {
+    state.assignmentDocs.sort(function (a, b) {
+      var la = a.lanNumber || 0, lb = b.lanNumber || 0;
+      if (lb !== la) return lb - la;
+      var da = a.lanDate ? new Date(a.lanDate).getTime() : -1;
+      var db = b.lanDate ? new Date(b.lanDate).getTime() : -1;
+      if (db !== da) return db - da;
+      return (b.lastModified || 0) - (a.lastModified || 0);
+    });
+  }
+  function latestAssignmentDoc() { return state.assignmentDocs.length ? state.assignmentDocs[0] : null; }
+  function saveAssignmentOverrides() {
+    try {
+      if (window.localStorage) window.localStorage.setItem(ASSIGNMENT_OVERRIDES_KEY, JSON.stringify(state.assignmentOverrides));
+    } catch (e) { /* ignore */ }
+  }
+
+  var EXCLUDE_FROM_CORE = { "SHL": true, "HĐTN": true };
+  function isCoreSubject(subj) {
+    if (EXCLUDE_FROM_CORE[(subj || "").toUpperCase()]) return false;
+    if (/^GDĐP/i.test(subj || "")) return false;
+    return true;
+  }
+
+  // TKB name -> {core, all} totals, from the latest file only (same scope as the leave feature).
+  function buildLatestTeacherTotals() {
+    var slots = buildLatestTeacherSlots();
+    var out = {};
+    Object.keys(slots).forEach(function (t) {
+      var core = 0, all = 0;
+      slots[t].forEach(function (s) {
+        all++;
+        if (isCoreSubject(s.subject)) core++;
+      });
+      out[t] = { core: core, all: all };
+    });
+    return out;
+  }
+
+  function givenName(ten) {
+    var parts = (ten || "").trim().split(/\s+/);
+    return (parts[parts.length - 1] || "").toUpperCase();
+  }
+  function prefixForGender(g) { return g === "F" ? "C." : (g === "M" ? "T." : null); }
+  function candidatesFor(person, tkbNames) {
+    var p = prefixForGender(person.gender);
+    var gn = givenName(person.ten);
+    return tkbNames.filter(function (t) {
+      var tu = t.toUpperCase();
+      if (p && tu.indexOf(p) !== 0) return false;
+      var parts = tu.replace(/\./g, " ").trim().split(/\s+/);
+      return parts.length && parts[parts.length - 1] === gn;
+    });
+  }
+  function oppositeCandidatesFor(person, tkbNames) {
+    var op = person.gender === "F" ? "T." : (person.gender === "M" ? "C." : null);
+    if (!op) return [];
+    var gn = givenName(person.ten);
+    return tkbNames.filter(function (t) {
+      var tu = t.toUpperCase();
+      if (tu.indexOf(op) !== 0) return false;
+      var parts = tu.replace(/\./g, " ").trim().split(/\s+/);
+      return parts.length && parts[parts.length - 1] === gn;
+    });
+  }
+  function hoInitials(ho) {
+    return (ho || "").trim().split(/\s+/).map(function (w) { return w.charAt(0).toUpperCase(); });
+  }
+  function midInitialOf(tkbName) {
+    var parts = tkbName.toUpperCase().replace(/\./g, " ").trim().split(/\s+/);
+    return parts.slice(1, -1); // everything between the C./T. prefix and the given name
+  }
+
+  // Matches every "Phân công" staff row to a TKB teacher name (or leaves it unresolved for
+  // manual pick). Runs as a few elimination passes since two people can share a given name
+  // and only get disambiguated once the unambiguous ones have already claimed their slot.
+  function matchAssignmentToTkb(staff, tkbNames) {
+    var claimed = {};
+    var overrideMap = state.assignmentOverrides || {};
+    var pending = staff.map(function (p, idx) {
+      var key = p.ho + "|" + p.ten;
+      var forced = overrideMap[key];
+      return { person: p, key: key, idx: idx, match: forced || null, note: forced ? "override" : null };
+    });
+    pending.forEach(function (item) { if (item.match) claimed[item.match] = true; });
+
+    var changed = true;
+    var rounds = 0;
+    while (changed && rounds < 6) {
+      changed = false;
+      rounds++;
+      pending.forEach(function (item) {
+        if (item.match) return;
+        var raw = candidatesFor(item.person, tkbNames).filter(function (t) { return !claimed[t]; });
+        if (raw.length === 0) {
+          raw = oppositeCandidatesFor(item.person, tkbNames).filter(function (t) { return !claimed[t]; });
+          if (raw.length === 1) { item.note = "gender-mismatch"; }
+        }
+        if (raw.length === 1) {
+          item.match = raw[0]; claimed[raw[0]] = true; changed = true;
+          return;
+        }
+        if (raw.length > 1) {
+          var initials = hoInitials(item.person.ho);
+          var byInitial = raw.filter(function (t) {
+            var mid = midInitialOf(t);
+            return mid.length && initials.indexOf(mid[0]) > -1;
+          });
+          if (byInitial.length === 1) {
+            item.match = byInitial[0]; claimed[byInitial[0]] = true; changed = true;
+          }
+        }
+      });
+    }
+    return pending; // [{person, key, match, note}]
+  }
+
+  // TKB teacher name -> {quota, core} from the latest Phân công doc matched against
+  // the latest TKB — the same numbers the "Phân công" tab shows, reused here so
+  // the "Dạy thay" tab can tell whether next week still has room for a make-up tiết.
+  function getAssignmentQuotaMap() {
+    var doc = latestAssignmentDoc();
+    if (!doc || !state.versions.length) return {};
+    var totals = buildLatestTeacherTotals();
+    var tkbNames = Object.keys(totals);
+    var matched = matchAssignmentToTkb(doc.staff, tkbNames);
+    var out = {};
+    matched.forEach(function (item) {
+      if (item.match) out[item.match] = { quota: item.person.total, core: totals[item.match].core };
+    });
+    return out;
+  }
+
+  function renderAssignmentVersionsInfo() {
+    var box = $("#assignmentVersionsInfo");
+    if (!box) return;
+    box.innerHTML = "";
+    if (!state.assignmentDocs.length) return;
+    state.assignmentDocs.forEach(function (d, i) {
+      var label = (d.lanNumber ? "LẦN " + d.lanNumber : d.fileName) + (d.lanDate ? " (" + fmtDate(d.lanDate) : (i === 0 ? " (mới nhất" : " (")) + ")";
+      var chip = el("span", { style: "display:inline-block; padding:2px 8px; margin:0 6px 4px 0; border-radius:999px; font-size:11px; font-weight:600;" + (i === 0 ? " background:var(--accent-soft); color:var(--accent-ink); border:1px solid var(--accent-soft-line);" : " background:var(--surface-alt); color:var(--ink-faint); border:1px solid var(--line-soft);"), text: label });
+      chip.title = d.fileName;
+      box.appendChild(chip);
+    });
+  }
+
+  function renderAssignmentComparison() {
+    var warnBox = $("#assignmentWarnBanner");
+    warnBox.innerHTML = "";
+    if (state.skipped.length) {
+      var banner = el("div", { class: "warn-banner" }, []);
+      var icon = el("span", { html: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3 1.5 17h17L10 3Z"/><path d="M10 8v4M10 14.2v.1"/></svg>' });
+      var text = el("div", {}, []);
+      text.appendChild(el("div", { text: "Bỏ qua " + state.skipped.length + " tệp không đọc được:", style: "font-weight:600; margin-bottom:2px;" }));
+      text.appendChild(el("div", { text: state.skipped.join(" · ") }));
+      banner.appendChild(icon); banner.appendChild(text);
+      warnBox.appendChild(banner);
+    }
+
+    var doc = latestAssignmentDoc();
+    var hasDoc = !!doc;
+    $("#assignmentEmpty").hidden = hasDoc;
+    $("#assignmentContent").hidden = !hasDoc;
+    renderAssignmentVersionsInfo();
+
+    if (!hasDoc) {
+      $("#assignmentSub").textContent = "Chưa tải bảng phân công";
+      $("#assignmentStatRow").innerHTML = "";
+      return;
+    }
+    if (!state.versions.length) {
+      $("#assignmentContent").hidden = true;
+      $("#assignmentEmpty").hidden = false;
+      $("#assignmentEmpty").querySelector("p").textContent = "Đã có bảng phân công (" + doc.fileName + ") nhưng chưa có thời khoá biểu để so sánh — hãy tải ít nhất 1 tệp TKB.";
+      $("#assignmentSub").textContent = "Chờ dữ liệu TKB";
+      return;
+    }
+
+    var v = latestVersion();
+    var so = (v.fileName.match(/SO ?\d+/i) || [])[0] || v.fileName;
+    var lanLabel = doc.lanNumber ? "LẦN " + doc.lanNumber : doc.fileName;
+    $("#assignmentSub").textContent = "Phân công: " + lanLabel + " (" + doc.fileName + ")  ·  So với TKB mới nhất: " + so.toUpperCase() + " (hiệu lực " + (v.hieulucDate ? fmtDate(v.hieulucDate) : (v.hieuluc || "—")) + ")";
+
+    var totals = buildLatestTeacherTotals();
+    var tkbNames = Object.keys(totals);
+    var matched = matchAssignmentToTkb(doc.staff, tkbNames);
+
+    var rows = matched.map(function (item) {
+      var p = item.person;
+      var t = item.match ? totals[item.match] : null;
+      var diff = t ? t.core - p.total : null;
+      return { key: item.key, ho: p.ho, ten: p.ten, total: p.total, match: item.match, core: t ? t.core : null, all: t ? t.all : null, diff: diff, note: item.note };
+    });
+    rows.sort(function (a, b) {
+      if (a.diff === null && b.diff === null) return 0;
+      if (a.diff === null) return 1;
+      if (b.diff === null) return -1;
+      return Math.abs(b.diff) - Math.abs(a.diff);
+    });
+
+    var withMatch = rows.filter(function (r) { return r.match; });
+    var diffs = withMatch.map(function (r) { return r.diff; });
+    var avg = diffs.length ? diffs.reduce(function (a, b) { return a + b; }, 0) / diffs.length : 0;
+    var over = diffs.filter(function (d) { return d > 0; }).length;
+    var under = diffs.filter(function (d) { return d < 0; }).length;
+    var exact = diffs.filter(function (d) { return d === 0; }).length;
+    var unresolved = rows.length - withMatch.length;
+
+    var statRow = $("#assignmentStatRow");
+    statRow.innerHTML = "";
+    [
+      [rows.length, "GV TRONG PHÂN CÔNG"],
+      [avg.toFixed(1), "CHÊNH LỆCH TB (TKB - PC)"],
+      [over, "TKB CAO HƠN"],
+      [under, "TKB THẤP HƠN"],
+      [unresolved, "CHƯA XÁC ĐỊNH"]
+    ].forEach(function (s, idx) {
+      var stat = el("div", { class: "stat" }, []);
+      var b = el("b", { text: String(s[0]) });
+      if (idx === 3 && s[0] > 0) b.style.color = "var(--danger)";
+      if (idx === 4 && s[0] > 0) b.style.color = "var(--danger)";
+      stat.appendChild(b);
+      stat.appendChild(el("span", { text: s[1] }));
+      statRow.appendChild(stat);
+    });
+
+    $("#assignmentHint").textContent = withMatch.length + "/" + rows.length + " giáo viên đã khớp tên với TKB" + (unresolved ? " · " + unresolved + " cần chọn thủ công" : "");
+
+    var table = $("#assignmentTable");
+    table.innerHTML = "";
+    var thead = el("thead", {}, []);
+    var htr = el("tr", {}, []);
+    ["Họ tên (Phân công)", "GV trong TKB", "Tiết Phân công", "Tiết TKB (chính khoá)", "Chênh lệch"].forEach(function (h) {
+      htr.appendChild(el("th", { text: h }));
+    });
+    thead.appendChild(htr);
+    table.appendChild(thead);
+
+    var tbody = el("tbody", {}, []);
+    rows.forEach(function (r) {
+      var tr = el("tr", {}, []);
+      tr.appendChild(el("td", { class: "tname", text: (r.ho + " " + r.ten).trim() }));
+
+      var gvTd = el("td", {}, []);
+      if (r.match) {
+        gvTd.appendChild(document.createTextNode(r.match));
+        if (r.note === "gender-mismatch") gvTd.appendChild(el("span", { class: "absence-week-tag", text: "giới tính không khớp trong file gốc" }));
+      } else {
+        var candidates = tkbNames.slice().sort(function (a, b) { return a.localeCompare(b, "vi"); });
+        var sel = el("select", { class: "unmatched-select" }, []);
+        sel.appendChild(el("option", { value: "" }, [])).textContent = "— Chọn GV trong TKB —";
+        candidates.forEach(function (n) {
+          var o = el("option", { value: n }, []); o.textContent = n; sel.appendChild(o);
+        });
+        sel.onchange = (function (key) {
+          return function () {
+            if (sel.value) {
+              state.assignmentOverrides[key] = sel.value;
+              saveAssignmentOverrides();
+              renderAssignmentComparison();
+            }
+          };
+        })(r.key);
+        gvTd.appendChild(sel);
+      }
+      tr.appendChild(gvTd);
+
+      tr.appendChild(el("td", { class: "tcount", text: String(r.total) }));
+      tr.appendChild(el("td", { class: "tcount", text: r.core === null ? "—" : String(r.core) + " (" + r.all + " tổng)" }));
+
+      var diffTd = el("td", {}, []);
+      if (r.diff === null) {
+        diffTd.appendChild(el("span", { style: "color:var(--ink-faint); font-size:12px;", text: "chưa xác định" }));
+      } else {
+        var cls = r.diff > 0 ? "over" : (r.diff < 0 ? "under" : "zero");
+        diffTd.appendChild(el("span", { class: "diff-badge " + cls, text: (r.diff > 0 ? "+" : "") + r.diff }));
+      }
+      tr.appendChild(diffTd);
+
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+  }
+
+  /* ============ Export: per-class teacher assignment table, all classes ============ */
+  function slotsToText(rawSlots) {
+    return mergeSlots(rawSlots).map(function (s) {
+      return slotLabel(s.day, s.buoi, s.tiet) + (s.count > 1 ? " (×" + s.count + ")" : "");
+    }).join(", ");
+  }
+
+  function exportClassExcel() {
+    var statusEl = $("#exportClassStatus");
+    if (!state.versions.length) {
+      statusEl.textContent = "Chưa có dữ liệu TKB để xuất.";
+      return;
+    }
+    if (typeof ExcelJS === "undefined") {
+      statusEl.textContent = "Không tải được thư viện xuất Excel — kiểm tra kết nối mạng rồi thử lại.";
+      return;
+    }
+    statusEl.textContent = "Đang tạo tệp…";
+
+    var names = allClassNames().sort(function (a, b) { return a.localeCompare(b, "vi"); });
+    var wb = new ExcelJS.Workbook();
+    var headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCE6F1" } };
+    var headerFont = { name: "Times New Roman", size: 10, bold: true };
+    var bodyFont = { name: "Times New Roman", size: 10 };
+    var thin = { style: "thin", color: { argb: "FFBBBBBB" } };
+    var fullBorder = { top: thin, bottom: thin, left: thin, right: thin };
+
+    function styleHeaderRow(row) {
+      row.eachCell(function (cell) {
+        cell.font = headerFont; cell.fill = headerFill; cell.border = fullBorder;
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      });
+    }
+
+    // Sheet 1: summary across all classes
+    var sum = wb.addWorksheet("Tổng hợp");
+    sum.addRow(["Lớp", "Số giáo viên", "Số môn học", "Tổng số tiết (tất cả tệp)"]);
+    styleHeaderRow(sum.getRow(1));
+    names.forEach(function (cls) {
+      var agg = buildClassAggregate(cls);
+      var subjSet = {}, total = 0, teacherCount = 0;
+      Object.keys(agg).forEach(function (t) {
+        teacherCount++;
+        Object.keys(agg[t]).forEach(function (s) { subjSet[s] = true; total += agg[t][s].length; });
+      });
+      var row = sum.addRow([cls, teacherCount, Object.keys(subjSet).length, total]);
+      row.eachCell(function (cell) { cell.font = bodyFont; cell.border = fullBorder; cell.alignment = { horizontal: "center", vertical: "middle" }; });
+    });
+    sum.columns = [{ width: 10 }, { width: 14 }, { width: 12 }, { width: 22 }];
+
+    // One sheet per class: same data as the "Giáo viên đứng lớp" table in the app
+    names.forEach(function (cls) {
+      var sheetName = cls.replace(/[\\/*?:[\]]/g, "").slice(0, 31);
+      var ws = wb.addWorksheet(sheetName);
+      ws.addRow(["Giáo viên", "Môn dạy", "Tổng số tiết", "Các tiết dạy"]);
+      styleHeaderRow(ws.getRow(1));
+
+      var agg = buildClassAggregate(cls);
+      var rowsArr = [];
+      Object.keys(agg).forEach(function (teacher) {
+        Object.keys(agg[teacher]).forEach(function (subject) {
+          rowsArr.push({ teacher: teacher, subject: subject, slots: agg[teacher][subject] });
+        });
+      });
+      rowsArr.sort(function (a, b) {
+        var t = a.teacher.localeCompare(b.teacher, "vi");
+        return t !== 0 ? t : a.subject.localeCompare(b.subject, "vi");
+      });
+      rowsArr.forEach(function (r) {
+        var row = ws.addRow([r.teacher, r.subject, r.slots.length, slotsToText(r.slots)]);
+        row.eachCell(function (cell) { cell.font = bodyFont; cell.border = fullBorder; cell.alignment = { horizontal: "left", vertical: "middle", wrapText: true }; });
+        row.getCell(3).alignment = { horizontal: "center", vertical: "middle" };
+      });
+      ws.columns = [{ width: 14 }, { width: 16 }, { width: 12 }, { width: 48 }];
+    });
+
+    var filename = "TKB_TheoLop_" + fmtDateDash(new Date()) + ".xlsx";
+    wb.xlsx.writeBuffer().then(function (buffer) {
+      return saveGeneratedFile(filename, buffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }).then(function () {
+      statusEl.textContent = "Đã xuất " + filename + " · " + names.length + " lớp";
+    }).catch(function (err) {
+      statusEl.textContent = "Không xuất được tệp (" + ((err && err.message) || "lỗi không rõ") + ").";
+    });
+  }
+
+  /* ============ Export: next week's TKB, excess periods highlighted ============ */
+  function nextMonday(from) {
+    var d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+    var day = d.getDay(); // 0=Sun..6=Sat
+    var add = (8 - day) % 7;
+    if (add === 0) add = 7; // if today IS Monday, "next week" means a week from today
+    d.setDate(d.getDate() + add);
+    return d;
+  }
+  function fmtDateDash(d) {
+    var dd = ("0" + d.getDate()).slice(-2);
+    var mm = ("0" + (d.getMonth() + 1)).slice(-2);
+    return dd + "-" + mm + "-" + d.getFullYear();
+  }
+
+  // Hands a generated file to the viewer. Works two ways depending on where this
+  // page is running: inside Claude's artifact runtime (uses the "downloads"
+  // capability, which shows its own confirmation) or as a plain standalone/offline
+  // HTML file or on a regular site like GitHub Pages (falls back to a normal
+  // browser download link) — the published-artifact path is tried first and only
+  // falls through on failure or absence.
+  function saveGeneratedFile(filename, arrayBuffer, mimeType) {
+    var viaClaude = (typeof window.claude === "object" && window.claude && typeof window.claude.use === "function")
+      ? window.claude.use("downloads").then(function (downloads) {
+        if (!downloads) return Promise.reject(new Error("no-downloads-capability"));
+        return downloads.save({ filename: filename, data: arrayBuffer });
+      })
+      : Promise.reject(new Error("no-claude-runtime"));
+
+    return viaClaude.catch(function () {
+      var blob = new Blob([arrayBuffer], { type: mimeType });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+      return { status: "saved" };
+    });
+  }
+
+  function exportNextWeekTKB() {
+    var statusEl = $("#exportNextWeekStatus");
+    var v = latestVersion();
+    var doc = latestAssignmentDoc();
+    if (!v || !v.rawRows) {
+      statusEl.textContent = "Chưa có thời khoá biểu để xuất.";
+      return;
+    }
+    if (typeof ExcelJS === "undefined") {
+      statusEl.textContent = "Không tải được thư viện xuất Excel — kiểm tra kết nối mạng rồi thử lại.";
+      return;
+    }
+    statusEl.textContent = "Đang tạo tệp…";
+
+    // 1) which (row,col) cells to highlight: teachers over their phân công quota,
+    //    picking CĐ/chuyên đề periods first, same rule as the one-off analysis.
+    var flagged = {};
+    if (doc) {
+      var totals = buildLatestTeacherTotals();
+      var tkbNames = Object.keys(totals);
+      var matched = matchAssignmentToTkb(doc.staff, tkbNames);
+      var quotaByTkbName = {};
+      matched.forEach(function (item) { if (item.match) quotaByTkbName[item.match] = item.person.total; });
+
+      var cellsByTeacher = {};
+      v.classes.forEach(function (cls) {
+        (v.scheduleByClass[cls] || []).forEach(function (e) {
+          if (!e.teacher) return;
+          cellsByTeacher[e.teacher] = cellsByTeacher[e.teacher] || [];
+          cellsByTeacher[e.teacher].push(e);
+        });
+      });
+      Object.keys(cellsByTeacher).forEach(function (teacher) {
+        var quota = quotaByTkbName[teacher];
+        if (quota === undefined) return;
+        var coreCells = cellsByTeacher[teacher].filter(function (e) { return isCoreSubject(e.subject); });
+        var diff = coreCells.length - quota;
+        if (diff <= 0) return;
+        var ceCells = coreCells.filter(function (e) { return e.subject.toUpperCase().indexOf("CĐ") === 0; });
+        var otherCells = coreCells.filter(function (e) { return e.subject.toUpperCase().indexOf("CĐ") !== 0; });
+        ceCells.concat(otherCells).slice(0, diff).forEach(function (e) {
+          flagged[e.row + "," + e.col] = true;
+        });
+      });
+    }
+
+    // 2) build the workbook: an exact copy of the latest TKB's raw grid, with the
+    //    effective-date cell moved to next Monday and the flagged cells filled.
+    var wb = new ExcelJS.Workbook();
+    var ws = wb.addWorksheet("TKBLop2b");
+    var rows = v.rawRows;
+    var ncols = 0;
+    rows.forEach(function (r) { if (r.length > ncols) ncols = r.length; });
+
+    var monday = fmtDateDash(nextMonday(new Date()));
+    var fontNormal = { name: "Times New Roman", size: 10 };
+    var fontBold = { name: "Times New Roman", size: 10, bold: true };
+    var headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCE6F1" } };
+    var flagFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF3B0" } };
+    var thinBorder = { style: "thin", color: { argb: "FFBBBBBB" } };
+    var fullBorder = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+
+    for (var r = 0; r < rows.length; r++) {
+      for (var c = 0; c < ncols; c++) {
+        var val = rows[r][c];
+        if (val === undefined) val = "";
+        if (r === v.hieulucRowIdx && c === v.hieulucColIdx) val = monday;
+        var cell = ws.getCell(r + 1, c + 1);
+        cell.value = val === "" ? null : val;
+        cell.font = r <= 7 ? fontBold : fontNormal;
+        if (r === 6 || r === 7) cell.fill = headerFill;
+        if (flagged[r + "," + c]) {
+          cell.fill = flagFill;
+          cell.note = "Tiết này đang VƯỢT định mức phân công của giáo viên (ưu tiên tiết Chuyên đề/CĐ). Cần người phụ trách rà lại: giữ, cắt, hay chuyển GV khác.";
+        }
+        if (r >= 7) {
+          cell.border = fullBorder;
+          cell.alignment = { horizontal: c === ncols - 1 ? "left" : "center", vertical: "middle", wrapText: true };
+        }
+      }
+    }
+    // 3) write in any chosen make-up periods (absences marked "Bù vào tuần sau")
+    var makeupFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9F0DD" } };
+    var slotRows = buildSlotRowIndex(v);
+    var makeupCount = 0;
+    state.absences.filter(function (a) { return a.substitute === FALLBACK_MAKEUP && a.makeupSlot; }).forEach(function (a) {
+      var key = a.makeupSlot.day + "|" + a.makeupSlot.buoi + "|" + a.makeupSlot.tiet;
+      var mr = slotRows[key];
+      var mc = v.classColByName[a.cls];
+      if (mr === undefined || mc === undefined) return;
+      var mcell = ws.getCell(mr + 1, mc + 1);
+      mcell.value = a.subject + " - " + a.teacher;
+      mcell.fill = makeupFill;
+      mcell.note = "Tiết bù cho tiết nghỉ của " + a.teacher + " (lớp " + a.cls + ", môn " + a.subject +
+        (a.weekLabel ? ", " + a.weekLabel : "") + ") — GV tự dạy bù vào khung giờ này.";
+      makeupCount++;
+    });
+
+    var tietColForWidth = 2; // "Tiết" is always the 3rd column (index 2) in this template
+    for (var rw = 0; rw < Math.min(10, rows.length); rw++) {
+      var found3 = false;
+      for (var cw2 = 0; cw2 < ncols; cw2++) {
+        if ((rows[rw][cw2] || "").toString().trim() === "Tiết") { tietColForWidth = cw2; found3 = true; break; }
+      }
+      if (found3) break;
+    }
+    ws.getColumn(1).width = 8;
+    ws.getColumn(2).width = 9;
+    ws.getColumn(tietColForWidth + 1).width = 6;
+    for (var cw = tietColForWidth + 2; cw <= ncols; cw++) ws.getColumn(cw).width = 15;
+
+    var legendRow = 4;
+    ws.getCell(legendRow, 1).value =
+      "Ghi chú: TKB tuần " + monday + " — sao chép từ bản mới nhất (" +
+      ((v.fileName.match(/SO ?\d+/i) || [])[0] || v.fileName).toUpperCase() +
+      "). Ô tô VÀNG là tiết đang VƯỢT định mức phân công" + (doc ? " (" + (doc.lanNumber ? "LẦN " + doc.lanNumber : doc.fileName) + ")" : "") +
+      "; ô tô XANH LÁ là tiết BÙ cho tuần trước (từ tab Dạy thay) — di chuột vào ô để xem chú thích, cần rà lại trước khi ban hành.";
+    ws.getCell(legendRow, 1).font = { name: "Times New Roman", size: 9, italic: true, color: { argb: "FFB45309" } };
+    ws.mergeCells(legendRow, 1, legendRow, Math.min(10, ncols));
+    ws.getCell(legendRow, 1).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+    ws.getRow(legendRow).height = 30;
+
+    var filename = "TKB_Tuan_" + monday + (doc ? "_DeXuat" : "") + ".xlsx";
+    wb.xlsx.writeBuffer().then(function (buffer) {
+      return saveGeneratedFile(filename, buffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }).then(function () {
+      var bits = [];
+      if (Object.keys(flagged).length) bits.push(Object.keys(flagged).length + " ô vượt định mức");
+      if (makeupCount) bits.push(makeupCount + " tiết bù");
+      statusEl.textContent = "Đã xuất " + filename + (bits.length ? " · " + bits.join(", ") : "");
+    }).catch(function (err) {
+      statusEl.textContent = "Không xuất được tệp (" + ((err && err.message) || "lỗi không rõ") + ").";
+    });
+  }
+
+  /* ============ Theme toggle ============ */
+  function initTheme() {
+    var saved = null;
+    try { saved = sessionStorage.getItem("tkb-theme"); } catch (e) {}
+    if (saved) document.documentElement.setAttribute("data-theme", saved);
+    $("#themeToggle").onclick = function () {
+      var cur = document.documentElement.getAttribute("data-theme");
+      var mql = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var effectiveIsDark = cur ? cur === "dark" : mql;
+      var next = effectiveIsDark ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try { sessionStorage.setItem("tkb-theme", next); } catch (e) {}
+    };
+  }
+
+  /* ============ Wire up events ============ */
+  function init() {
+    initTheme();
+    loadAbsencesFromStorage();
+    loadAssignmentFromStorage();
+
+    $("#chooseFolderBtn").onclick = function () { $("#folderInput").click(); };
+    $("#chooseFilesBtn").onclick = function () { $("#filesInput").click(); };
+    $("#addMoreBtn").onclick = function () { $("#filesInput").click(); };
+
+    $("#folderInput").onchange = function (ev) { handleFiles(ev.target.files); ev.target.value = ""; };
+    $("#filesInput").onchange = function (ev) { handleFiles(ev.target.files); ev.target.value = ""; };
+
+    $("#classSearch").oninput = function () {
+      if (state.versions.length) renderClassGroups();
+    };
+    $("#teacherSearch").oninput = function () {
+      if (state.versions.length) renderTeacherSidebarList();
+    };
+
+    $all(".mode-btn").forEach(function (btn) {
+      btn.onclick = function () {
+        state.viewMode = btn.getAttribute("data-mode");
+        render();
+      };
+    });
+
+    $("#addAbsenceBtn").onclick = addAbsencesFromChecklist;
+
+    $("#chooseAssignmentBtn").onclick = function () { $("#assignmentInput").click(); };
+    $("#reuploadAssignmentBtn").onclick = function () { $("#assignmentInput").click(); };
+    $("#assignmentInput").onchange = function (ev) { handleFiles(ev.target.files); ev.target.value = ""; };
+    $("#exportNextWeekBtn").onclick = exportNextWeekTKB;
+    $("#exportClassBtn").onclick = exportClassExcel;
+
+    var adz = $("#assignmentDropzone");
+    if (adz) {
+      ["dragenter", "dragover"].forEach(function (evt) {
+        adz.addEventListener(evt, function (e) { e.preventDefault(); e.stopPropagation(); adz.classList.add("is-drag"); });
+      });
+      ["dragleave", "drop"].forEach(function (evt) {
+        adz.addEventListener(evt, function (e) { e.preventDefault(); e.stopPropagation(); adz.classList.remove("is-drag"); });
+      });
+      adz.addEventListener("drop", function (e) {
+        var files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files.length) handleFiles(files);
+      });
+    }
+
+    var dz = $("#dropzone");
+    ["dragenter", "dragover"].forEach(function (evt) {
+      dz.addEventListener(evt, function (e) {
+        e.preventDefault(); e.stopPropagation();
+        dz.classList.add("is-drag");
+      });
+    });
+    ["dragleave", "drop"].forEach(function (evt) {
+      dz.addEventListener(evt, function (e) {
+        e.preventDefault(); e.stopPropagation();
+        dz.classList.remove("is-drag");
+      });
+    });
+    dz.addEventListener("drop", function (e) {
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) handleFiles(files);
+    });
+    // also allow dropping anywhere on main once data exists (adding more versions)
+    document.addEventListener("dragover", function (e) { e.preventDefault(); });
+    document.addEventListener("drop", function (e) {
+      if (e.target.closest && e.target.closest("#dropzone")) return;
+      e.preventDefault();
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) handleFiles(files);
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+
+</script>
+</body>
+</html>
