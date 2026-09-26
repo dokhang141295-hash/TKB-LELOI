@@ -2883,17 +2883,17 @@
       // ambiguous free text).
       var classSet = {};
       doc.staff.forEach(function (p) {
-        [p.l10, p.l11, p.l12].forEach(function (text) {
+        [["10", p.l10], ["11", p.l11], ["12", p.l12]].forEach(function (grp) {
+          var text = grp[1];
           if (!text) return;
-          // pull out every "<grade>A<nums>" fragment we can find, tolerating
-          // the "K10"-style whole-grade shorthand and the "AA" typo
-          var cleaned = text.replace(/(\d{2})AA/g, "$1A");
-          var re = /(\d{2})A([\d,\s]+)/g, m;
-          while ((m = re.exec(cleaned))) {
-            m[2].replace(/\s+/g, "").split(",").forEach(function (n) {
-              if (n) classSet[m[1] + "A" + n] = true;
-            });
-          }
+          // Same parser the auto-fill uses, so both agree on which classes exist
+          // (handles "10A1,5", "CĐ A5" inheriting the khối, and the "AA" typo).
+          // Normalise non-breaking spaces / lowercase "a" / full-width commas first.
+          var cleaned = text.replace(/[   ]/g, " ").replace(/，/g, ",").replace(/(\d{2})\s*a(?=\s*\d)/gi, "$1A");
+          parseAssignmentClasses(cleaned, grp[0]).forEach(function (c) {
+            if (c.unparsed || !c.classNums || c.classNums === "ALL") return;
+            c.classNums.forEach(function (n) { classSet[c.grade + "A" + n] = true; });
+          });
         });
       });
       classes = Object.keys(classSet).sort(function (a, b) { return a.localeCompare(b, "vi"); });
@@ -3797,17 +3797,36 @@
     $("#generateDraftBtn").onclick = function () {
       var d = generateDraft();
       var statusEl = $("#confirmDraftStatus");
+      var exportStatusEl = $("#exportNextWeekStatus");
       if (!d) {
         $("#draftPanel").hidden = true;
-        if (statusEl) statusEl.textContent = "Chưa có TKB hoặc bảng phân công để tạo bản nháp.";
+        // The draft panel itself is hidden here, so the message must go in a
+        // spot that is always visible (next to the button that was clicked).
+        var docNow = latestAssignmentDoc();
+        var msg;
+        if (!latestVersion() && !docNow) {
+          msg = "Chưa có TKB hoặc bảng phân công — hãy tải bảng phân công lên trước.";
+        } else if (docNow && !latestVersion()) {
+          var sample = "";
+          for (var si = 0; si < docNow.staff.length && !sample; si++) sample = docNow.staff[si].l10 || docNow.staff[si].l11 || docNow.staff[si].l12 || "";
+          msg = "Không nhận ra được tên lớp nào trong cột 'Lớp' của bảng phân công (" + docNow.staff.length + " giáo viên đã đọc)." +
+            (sample ? " Ví dụ ô đầu tiên: \"" + sample + "\" — định dạng mong đợi như \"Toán 10A1,5\"." : "") +
+            " Bạn có thể tải thêm 1 tệp TKB có sẵn để lấy danh sách lớp.";
+        } else {
+          msg = "Không tạo được bản nháp — TKB đã tải không có lớp nào.";
+        }
+        if (exportStatusEl) exportStatusEl.textContent = msg;
+        if (statusEl) statusEl.textContent = msg;
         return;
       }
+      if (exportStatusEl) exportStatusEl.textContent = "";
       state.draft = d;
       state.draftClass = null;
       $("#draftPanel").hidden = false;
       renderDraftClassSelect();
       renderDraftTable();
       if (statusEl) statusEl.textContent = "";
+      try { $("#draftPanel").scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { /* ignore */ }
     };
     $("#confirmDraftBtn").onclick = confirmDraft;
     $("#autoFillDraftBtn").onclick = function () {
