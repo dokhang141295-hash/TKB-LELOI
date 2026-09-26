@@ -974,6 +974,7 @@
           <div class="panel__body">
             <div id="replanRow" style="margin-bottom:12px;" hidden>
               <button class="btn btn--primary" id="replanBtn">🔁 Xếp lại toàn bộ TKB để các tiết bù đều thuận tiện</button>
+              <button class="btn" id="clearAbsencesBtn" style="margin-left:8px;">🗑 Xoá toàn bộ danh sách nghỉ</button>
               <div id="replanStatus" style="font-size:12px; color:var(--ink-faint); margin-top:6px;"></div>
             </div>
             <table class="tsum-table" id="absenceTable"></table>
@@ -1442,6 +1443,12 @@
     }
     var t10Col = k10Hit.col + 1, t11Col = k11Hit.col + 1, t12Col = k12Hit.col + 1;
 
+    // The birth-year columns in the source file are wrong for a few people: fixed here by name.
+    function genderOverride(ho, ten, g) {
+      var key = (ho + " " + ten).replace(/\s+/g, " ").trim().toLowerCase();
+      var fix = { "lưu minh thành": "M", "bùi thị lan": "F" };
+      return fix[key] || g;
+    }
     var staff = [];
     for (var r = hoRow + 1; r < rows.length; r++) {
       var row = rows[r] || [];
@@ -1451,6 +1458,7 @@
       var nam = namCol > -1 ? (row[namCol] || "").toString().trim() : "";
       var nu = nuCol > -1 ? (row[nuCol] || "").toString().trim() : "";
       var gender = nam ? "M" : (nu ? "F" : null);
+      gender = genderOverride(ho, ten, gender);
       var t10 = parseFloat(row[t10Col]) || 0;
       var t11 = parseFloat(row[t11Col]) || 0;
       var t12 = parseFloat(row[t12Col]) || 0;
@@ -2550,7 +2558,9 @@
 
   function updateReplanRow() {
     var row = $("#replanRow");
-    if (row) row.hidden = !(state.draft && draftHasContent() && latestAssignmentDoc() && state.absences.length);
+    if (row) row.hidden = !state.absences.length;
+    var rb = $("#replanBtn");
+    if (rb) rb.hidden = !(state.draft && draftHasContent() && latestAssignmentDoc());
   }
 
   function renderAbsenceTable() {
@@ -2821,7 +2831,18 @@
       return (b.lastModified || 0) - (a.lastModified || 0);
     });
   }
-  function latestAssignmentDoc() { return state.assignmentDocs.length ? state.assignmentDocs[0] : null; }
+  var GENDER_FIX = { "lưu minh thành": "M", "bùi thị lan": "F" };
+  function latestAssignmentDoc() {
+    var d = state.assignmentDocs.length ? state.assignmentDocs[0] : null;
+    if (d && d.staff && !d._genderFixed) {       // also corrects an assignment file saved in the browser earlier
+      d.staff.forEach(function (p) {
+        var g = GENDER_FIX[((p.ho || "") + " " + (p.ten || "")).replace(/\s+/g, " ").trim().toLowerCase()];
+        if (g) p.gender = g;
+      });
+      d._genderFixed = true;
+    }
+    return d;
+  }
   function saveAssignmentOverrides() {
     try {
       if (window.localStorage) window.localStorage.setItem(ASSIGNMENT_OVERRIDES_KEY, JSON.stringify(state.assignmentOverrides));
@@ -3666,6 +3687,9 @@
         if (units[i].flag || units[i].c !== cu || units[i].t !== tu) continue;
         if (units[i].subj === su) { pick = i; break; }
         if (pick < 0) pick = i;
+      }
+      if (pick < 0 && su !== undefined) {           // the assignment doesn't list this class/teacher pair (old or hand-made absence): plan it as an extra lesson
+        units.push({ c: cu, subj: su, t: tu }); pick = units.length - 1;
       }
       if (pick >= 0) units[pick].flag = true;
       flagOf.push(pick);
@@ -4613,6 +4637,11 @@
     };
     $("#confirmDraftBtn").onclick = confirmDraft;
     $("#autoFillDraftBtn").onclick = function () { runAutoFillOptimize($("#autoFillStatus"), $("#autoFillDraftBtn"), null); };
+    $("#clearAbsencesBtn").onclick = function () {
+      if (!state.absences.length) return;
+      if (!window.confirm("Xoá toàn bộ " + state.absences.length + " tiết nghỉ đã đăng ký (kể cả dữ liệu cũ lưu trong trình duyệt)?")) return;
+      state.absences = []; saveAbsencesToStorage(); render();
+    };
     $("#replanBtn").onclick = function () {
       runAutoFillOptimize($("#replanStatus"), $("#replanBtn"), function () { render(); });
     };
