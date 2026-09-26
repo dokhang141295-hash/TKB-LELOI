@@ -944,9 +944,10 @@
         <section class="panel">
           <div class="panel__head">
             <h2>Đăng ký giáo viên nghỉ</h2>
-            <span class="hint">Dựa trên thời khoá biểu mới nhất đã tải</span>
+            <span class="hint" id="leaveSourceHint">Dựa trên thời khoá biểu mới nhất đã tải</span>
           </div>
           <div class="panel__body">
+            <div id="leaveSourceRow" style="margin-bottom:12px;" hidden></div>
             <div class="leave-form-grid">
               <div>
                 <p class="side-label">GIÁO VIÊN BÁO NGHỈ</p>
@@ -1020,7 +1021,7 @@
             <div class="panel__body">
               <p style="font-size:12.5px; color:var(--ink-soft); margin:0 0 12px;">
                 Xuất ra tệp .xlsx đúng mẫu TKB gốc cho tuần kế tiếp: tô <b>vàng</b> tiết vượt định mức phân công, tự điền tiết <b>bù</b> (xanh lá) từ tab Dạy thay, và <b>xoá trắng</b> các buổi bạn chọn nghỉ bên dưới.
-                <span style="color:var(--ink-faint);">(Cần đã có ít nhất 1 TKB — tải lên sẵn, hoặc "Tạo bản nháp" → sửa → "Chốt tuần này" bên dưới trước khi xuất được.)</span>
+                <span style="color:var(--ink-faint);">(Xuất theo bản nháp bên dưới nếu đã có, kèm giáo viên nghỉ / tiết bù đăng ký ở tab "Dạy thay" — không cần "Chốt" trước; nếu chưa có bản nháp thì xuất theo TKB đã tải lên.)</span>
               </p>
 
               <p class="side-label" style="margin-bottom:6px;">NGHỈ CÁC BUỔI SAU (tuần này)</p>
@@ -1051,6 +1052,7 @@
                 <select class="select" id="draftClassSelect" style="width:auto;"></select>
                 <button class="btn" id="autoFillDraftBtn">🤖 Tự động điền từ Phân công (tối đa 25 tiết/GV)</button>
                 <button class="btn btn--primary" id="confirmDraftBtn">✓ Chốt tuần này</button>
+                <button class="btn" id="goLeaveBtn">👤 Đăng ký GV nghỉ tuần này (tab Dạy thay)</button>
               </div>
               <div id="autoFillStatus" style="font-size:12px; color:var(--ink-faint); margin:-6px 0 12px;"></div>
               <div id="confirmDraftStatusRow" style="margin-bottom:8px;"><span id="confirmDraftStatus" style="font-size:12px; color:var(--ink-faint);"></span></div>
@@ -1129,6 +1131,8 @@
     offBuoi: { "Thứ 5|CHIỀU": true, "Thứ 7|SÁNG": true, "Thứ 7|CHIỀU": true },
     draft: null,           // {monday, classes, scheduleByClass, meta:{truong,hocky,namhoc}}, editable in-app
     draftClass: null,      // which class the draft table is currently showing
+    draftRev: 0,           // bumps on every draft edit (cache key for the live-draft version)
+    useDraftAsSource: true,// Dạy thay / so sánh / xuất Excel read the draft instead of the last real TKB
     confirmedWeeks: []     // [{mondayISO, fileName, ...full version fields}], persisted — the "remembered" chốt weeks
   };
 
@@ -2187,7 +2191,35 @@
     }).join(", ") + ".";
   }
 
-  function latestVersion() { return state.versions.length ? state.versions[0] : null; }
+  // The newest real TKB (uploaded file or a "Chốt" week) — ignores any draft.
+  function baseVersion() { return state.versions.length ? state.versions[0] : null; }
+
+  // The in-app draft for next week (not yet exported / confirmed), turned into
+  // the same shape as an uploaded TKB so the Dạy thay tab, the phân công
+  // comparison and the Excel export can all read it directly. It is rebuilt
+  // only when the draft actually changed (draftRev bumps on every edit).
+  var draftVersionCache = null, draftVersionCacheRev = -1;
+  function touchDraft() { state.draftRev = (state.draftRev || 0) + 1; draftVersionCache = null; }
+  function draftHasContent() {
+    var d = state.draft;
+    if (!d || !d.classes || !d.classes.length) return false;
+    return d.classes.some(function (cls) {
+      return (d.scheduleByClass[cls] || []).some(function (e) { return e.subject || e.teacher; });
+    });
+  }
+  function draftAsVersion() {
+    if (state.useDraftAsSource === false || !draftHasContent()) return null;
+    if (draftVersionCache && draftVersionCacheRev === state.draftRev) return draftVersionCache;
+    var v = synthesizeVersionFromDraft(state.draft);
+    v.fileName = "BẢN NHÁP TUẦN SAU " + v.hieuluc;
+    v.lastModified = state.draftRev || 0;   // stable cache key until the next edit
+    v.isDraft = true;
+    draftVersionCache = v; draftVersionCacheRev = state.draftRev;
+    return v;
+  }
+  // What every "latest TKB" feature reads: the live draft if there is one with
+  // content (and the person hasn't switched it off), otherwise the newest real TKB.
+  function latestVersion() { return draftAsVersion() || baseVersion(); }
 
   // teacher -> sorted [{day,buoi,tiet,cls,subject}] from the latest file only
   var latestSlotsCache = null, latestSlotsCacheKey = null;
@@ -2348,8 +2380,35 @@
 
     var so = v ? ((v.fileName.match(/SO ?\d+/i) || [])[0] || v.fileName) : "";
     $("#leaveSub").textContent = v
-      ? "Dựa trên lịch mới nhất: " + so.toUpperCase() + " · hiệu lực " + (v.hieulucDate ? fmtDate(v.hieulucDate) : (v.hieuluc || "—"))
-      : "Chưa có dữ liệu";
+      ? (v.isDraft
+          ? "Dựa trên BẢN NHÁP TKB tuần sau (chưa chốt, chưa xuất Excel) · hiệu lực " + (v.hieulucDate ? fmtDate(v.hieulucDate) : (v.hieuluc || "—"))
+          : "Dựa trên lịch mới nhất: " + so.toUpperCase() + " · hiệu lực " + (v.hieulucDate ? fmtDate(v.hieulucDate) : (v.hieuluc || "—")))
+      : "Chưa có dữ liệu — hãy tải TKB, hoặc tạo bản nháp ở tab \"TKB tuần sau\"";
+    $("#leaveSourceHint").textContent = v && v.isDraft ? "Đang dùng bản nháp TKB tuần sau" : "Dựa trên thời khoá biểu mới nhất đã tải";
+
+    // Let the person pick which timetable the leave list works from, whenever a
+    // draft with content exists alongside a real (uploaded / confirmed) one.
+    var srcRow = $("#leaveSourceRow");
+    var hasDraft = (function () { var prev = state.useDraftAsSource; state.useDraftAsSource = true; var h = !!draftAsVersion(); state.useDraftAsSource = prev; return h; })();
+    srcRow.innerHTML = "";
+    srcRow.hidden = !hasDraft;
+    if (hasDraft) {
+      var lbl = el("label", { style: "display:flex; gap:8px; align-items:center; font-size:12.5px; cursor:pointer;" }, []);
+      var cb = el("input", { type: "checkbox", id: "useDraftSourceCb" });
+      cb.checked = state.useDraftAsSource !== false;
+      cb.onchange = function () { state.useDraftAsSource = cb.checked; render(); };
+      lbl.appendChild(cb);
+      lbl.appendChild(el("span", { text: "Dùng bản nháp TKB tuần sau (chưa chốt) làm nguồn — bỏ tick để dùng TKB đã tải / đã chốt" }));
+      srcRow.appendChild(lbl);
+    }
+
+    // prefill the "tuần áp dụng" note with next week's range when working on the draft
+    var wk = $("#leaveWeekLabel");
+    if (v && v.isDraft && wk && !wk.value && v.hieulucDate) {
+      var mon = new Date(v.hieulucDate), sun = new Date(mon.getTime() + 6 * 86400000);
+      var p2 = function (n) { return (n < 10 ? "0" : "") + n; };
+      wk.value = "Tuần " + p2(mon.getDate()) + "/" + p2(mon.getMonth() + 1) + " – " + p2(sun.getDate()) + "/" + p2(sun.getMonth() + 1);
+    }
 
     $("#offBuoiHint").textContent = offBuoiSummaryText() + " (đổi ở tab \"TKB tuần sau\")";
     renderLeaveTeacherSelect();
@@ -2872,7 +2931,7 @@
   }
 
   function generateDraft() {
-    var v = latestVersion();
+    var v = baseVersion();   // never build a new draft on top of the old draft
     var doc = latestAssignmentDoc();
     var classes, universe, meta, existingByClassSlot;
 
@@ -3116,7 +3175,12 @@
     thead.appendChild(htr);
     table.appendChild(thead);
 
-    var teacherNames = Object.keys(buildLatestTeacherSlots()).sort(function (a, b) { return a.localeCompare(b, "vi"); });
+    // suggestions = teachers in the last real TKB plus anyone already typed into the draft
+    var nameSet = {};
+    Object.keys(buildLatestTeacherSlots()).forEach(function (n) { nameSet[n] = true; });
+    var bv = baseVersion();
+    if (bv) bv.classes.forEach(function (c) { (bv.scheduleByClass[c] || []).forEach(function (e) { if (e.teacher) nameSet[e.teacher] = true; }); });
+    var teacherNames = Object.keys(nameSet).sort(function (a, b) { return a.localeCompare(b, "vi"); });
     var dl = $("#draftTeacherList");
     if (!dl) {
       dl = el("datalist", { id: "draftTeacherList" }, []);
@@ -3151,6 +3215,7 @@
         subjInput.className = "draft-input" + (e.subject ? "" : " empty");
         teachInput.className = "draft-input" + (e.teacher ? "" : " empty");
         tr.className = (!e.subject && !e.teacher) ? "draft-row-empty" : "";
+        touchDraft();
         var filledNow = entries.filter(function (x) { return x.subject || x.teacher; }).length;
         $("#draftHint").textContent = "Lớp " + cls + " · " + filledNow + "/" + entries.length + " tiết đã xếp";
       }
@@ -3267,7 +3332,7 @@
     thead.appendChild(htr);
     table.appendChild(thead);
     var sorted = state.confirmedWeeks.slice().sort(function (a, b) { return new Date(b.hieulucDate) - new Date(a.hieulucDate); });
-    var latestFileName = latestVersion() ? latestVersion().fileName : null;
+    var latestFileName = baseVersion() ? baseVersion().fileName : null;
     var tbody = el("tbody", {}, []);
     sorted.forEach(function (w) {
       var tr = el("tr", {}, []);
@@ -3592,7 +3657,7 @@
     var v = latestVersion();
     var doc = latestAssignmentDoc();
     if (!v || !v.rawRows) {
-      statusEl.textContent = "Chưa có TKB nào để xuất — hãy bấm \"Tạo bản nháp\" phía trên, chỉnh sửa rồi bấm \"Chốt tuần này\" trước (hoặc tải lên 1 tệp TKB có sẵn), sau đó mới xuất Excel được.";
+      statusEl.textContent = "Chưa có gì để xuất — hãy bấm \"Tạo bản nháp\" phía trên và điền tiết (tự điền hoặc gõ tay), hoặc tải lên 1 tệp TKB có sẵn. Không cần bấm \"Chốt\" trước.";
       return;
     }
     if (typeof ExcelJS === "undefined") {
@@ -3816,9 +3881,9 @@
         // spot that is always visible (next to the button that was clicked).
         var docNow = latestAssignmentDoc();
         var msg;
-        if (!latestVersion() && !docNow) {
+        if (!baseVersion() && !docNow) {
           msg = "Chưa có TKB hoặc bảng phân công — hãy tải bảng phân công lên trước.";
-        } else if (docNow && !latestVersion()) {
+        } else if (docNow && !baseVersion()) {
           var sample = "";
           for (var si = 0; si < docNow.staff.length && !sample; si++) sample = docNow.staff[si].l10 || docNow.staff[si].l11 || docNow.staff[si].l12 || "";
           msg = "Không nhận ra được tên lớp nào trong cột 'Lớp' của bảng phân công (" + docNow.staff.length + " giáo viên đã đọc)." +
@@ -3834,6 +3899,7 @@
       if (exportStatusEl) exportStatusEl.textContent = "";
       state.draft = d;
       state.draftClass = null;
+      touchDraft();
       $("#draftPanel").hidden = false;
       renderDraftClassSelect();
       renderDraftTable();
@@ -3847,11 +3913,17 @@
       if (!latestAssignmentDoc()) { statusEl.textContent = "Cần tải bảng phân công trước."; return; }
       var res = autoFillDraftFromAssignment(25);
       if (res.error) { statusEl.textContent = res.error; return; }
+      touchDraft();
       renderDraftTable();
       var bits = [res.placed + " tiết đã tự điền"];
       if (res.cappedTeacherCount) bits.push(res.cappedTeacherCount + " GV đã chạm trần 25 tiết/tuần (dừng điền thêm)");
       if (res.unplaced) bits.push(res.unplaced + " tiết chưa xếp được (hết chỗ trống hoặc trùng lịch) — cần điền tay");
-      statusEl.textContent = bits.join(" · ") + ". Số liệu là ước tính từ phân công (chia đều theo lớp) — bạn nên rà lại trước khi Chốt.";
+      statusEl.textContent = bits.join(" · ") + ". Số liệu là ước tính từ phân công (chia đều theo lớp) — bạn nên rà lại trước khi Chốt. Tab \"Dạy thay\" đã dùng bản nháp này, bạn có thể đăng ký GV nghỉ ngay mà chưa cần xuất Excel.";
+    };
+    $("#goLeaveBtn").onclick = function () {
+      state.viewMode = "leave";
+      render();
+      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) { /* ignore */ }
     };
     $("#exportClassBtn").onclick = exportClassExcel;
 
