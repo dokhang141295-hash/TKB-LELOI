@@ -1050,7 +1050,7 @@
               </p>
               <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
                 <select class="select" id="draftClassSelect" style="width:auto;"></select>
-                <button class="btn" id="autoFillDraftBtn">🤖 Tự động điền từ Phân công (tối đa 25 tiết/GV)</button>
+                <button class="btn" id="autoFillDraftBtn">🤖 Tự động xếp & tối ưu từ Phân công (tối đa 25 tiết/GV)</button>
                 <button class="btn btn--primary" id="confirmDraftBtn">✓ Chốt tuần này</button>
                 <button class="btn" id="goLeaveBtn">👤 Đăng ký GV nghỉ tuần này (tab Dạy thay)</button>
               </div>
@@ -2315,51 +2315,96 @@
   }
 
   // Candidate slots to make up a missed period next week: a day/buổi/tiết where
-  // BOTH the class (no subject scheduled there) and the teacher (not teaching
-  // elsewhere then) are free, based on the latest TKB's recurring weekly pattern.
-  // Ranked so the FIRST result (the one auto-picked) is a genuinely sensible
-  // choice rather than just "earliest free slot": avoid days that would give the
-  // class two periods of the same subject, prefer days the class already has
-  // fewer periods on (don't pile more onto an already-heavy day), then prefer
-  // sooner in the week so the make-up happens promptly.
-  function findMakeupCandidates(cls, teacher, subject) {
+  // BOTH the class and the teacher are free, from the latest TKB's weekly pattern.
+  //
+  // Ranked for convenience, not just availability:
+  //  (1) STUDENTS shouldn't make an extra trip: prefer a buổi the class already
+  //      attends that day, joined right onto its existing periods (no gap in
+  //      the middle). Worst: a day the class isn't at school at all.
+  //  (2) TEACHERS shouldn't come in for a single period: prefer a day/buổi they
+  //      already teach (counting their registered absences as NOT teaching and
+  //      their other chosen make-ups as teaching). Worst: a day they'd otherwise
+  //      not be at school — a one-period trip.
+  //  (3) then avoid same subject twice the same day, and prefer earlier in the week.
+  // `selfAbsence` (optional) is the absence being planned, so its own already
+  // chosen make-up slot isn't counted as if it were somebody else's.
+  function tietsIn(list, day, buoi) {
+    return list.filter(function (s) { return s.day === day && s.buoi === buoi; }).map(function (s) { return +s.tiet; });
+  }
+  function holeCount(tiets) {
+    if (tiets.length < 2) return 0;
+    return (Math.max.apply(null, tiets) - Math.min.apply(null, tiets) + 1) - tiets.length;
+  }
+  function findMakeupCandidates(cls, teacher, subject, selfAbsence) {
     var v = latestVersion();
     if (!v) return [];
     var slotRows = buildSlotRowIndex(v);
     var occ = buildLatestOccupancy();
-    var classEntries = v.scheduleByClass[cls] || [];
-    var classBusy = {};
-    var dayLoad = {};       // day -> how many periods this class already has that day
-    var daySubjects = {};   // day -> {subject: true} already on that day for this class
-    classEntries.forEach(function (e) {
-      classBusy[e.day + "|" + e.buoi + "|" + e.tiet] = true;
-      dayLoad[e.day] = (dayLoad[e.day] || 0) + 1;
-      daySubjects[e.day] = daySubjects[e.day] || {};
-      if (e.subject) daySubjects[e.day][e.subject] = true;
+    var wk = selfAbsence ? (selfAbsence.weekLabel || "") : null;
+    var others = state.absences.filter(function (x) { return x !== selfAbsence && (wk === null || (x.weekLabel || "") === wk); });
+
+    // ---- the class's own week: its periods + make-ups already chosen for it elsewhere
+    var classSlots = (v.scheduleByClass[cls] || []).map(function (e) { return { day: e.day, buoi: e.buoi, tiet: e.tiet, subject: e.subject }; });
+    others.forEach(function (x) {
+      if (x.cls === cls && x.substitute === FALLBACK_MAKEUP && x.makeupSlot) classSlots.push({ day: x.makeupSlot.day, buoi: x.makeupSlot.buoi, tiet: x.makeupSlot.tiet, subject: x.subject });
     });
+    var classBusy = {};
+    classSlots.forEach(function (e) { classBusy[e.day + "|" + e.buoi + "|" + e.tiet] = true; });
+
+    // ---- the teacher's own week: what they still teach (absences removed) + make-ups
+    var teacherSlots = ((buildLatestTeacherSlots()[teacher]) || []).map(function (e) { return { day: e.day, buoi: e.buoi, tiet: e.tiet }; });
+    var absentKeys = {};
+    state.absences.forEach(function (x) {
+      if (x.teacher === teacher && (wk === null || (x.weekLabel || "") === wk)) absentKeys[x.day + "|" + x.buoi + "|" + x.tiet] = true;
+    });
+    teacherSlots = teacherSlots.filter(function (e) { return !absentKeys[e.day + "|" + e.buoi + "|" + e.tiet]; });
+    var teacherBusyExtra = {};
+    others.forEach(function (x) {
+      if (x.teacher === teacher && x.substitute === FALLBACK_MAKEUP && x.makeupSlot) {
+        teacherSlots.push({ day: x.makeupSlot.day, buoi: x.makeupSlot.buoi, tiet: x.makeupSlot.tiet });
+        teacherBusyExtra[x.makeupSlot.day + "|" + x.makeupSlot.buoi + "|" + x.makeupSlot.tiet] = true;
+      }
+    });
+
     var out = [];
     Object.keys(slotRows).forEach(function (key) {
       if (classBusy[key]) return;
       var busyTeachers = occ[key] || {};
-      if (busyTeachers[teacher]) return;
+      if (busyTeachers[teacher] && !absentKeys[key]) return;   // teaching elsewhere then
+      if (teacherBusyExtra[key]) return;
       var parts = key.split("|");
-      var day = parts[0], buoi = parts[1], tiet = parts[2];
+      var day = parts[0], buoi = parts[1], tiet = parts[2], t = +tiet;
       if (isBuoiOff(day, buoi)) return;
+
+      var cSame = tietsIn(classSlots, day, buoi);
+      var cDay = classSlots.filter(function (s) { return s.day === day; }).length;
+      var tSame = tietsIn(teacherSlots, day, buoi);
+      var tDay = teacherSlots.filter(function (s) { return s.day === day; }).length;
+      var cHole = holeCount(cSame.concat([t])) - holeCount(cSame);
+      var tHole = holeCount(tSame.concat([t])) - holeCount(tSame);
+      var sameSubjectClash = !!(subject && classSlots.some(function (s) { return s.day === day && s.subject === subject; }));
+
+      var cost = 0, warns = [], goods = [];
+      if (cDay === 0) { cost += 1000; warns.push("lớp phải đến trường thêm 1 ngày chỉ vì tiết này"); }
+      else if (!cSame.length) { cost += 500; warns.push("lớp phải đến thêm buổi " + (buoi === "SÁNG" ? "sáng" : "chiều") + " ngày này"); }
+      else if (cHole > 0) { cost += 120 * cHole; warns.push("tạo " + cHole + " tiết trống giữa các tiết của lớp"); }
+      else goods.push("nối liền tiết của lớp");
+
+      if (tDay === 0) { cost += 900; warns.push("GV chỉ có đúng 1 tiết này trong ngày"); }
+      else if (!tSame.length) { cost += 450; warns.push("GV phải lên trường thêm buổi " + (buoi === "SÁNG" ? "sáng" : "chiều")); }
+      else if (tHole > 0) { cost += 100 * tHole; warns.push("tạo " + tHole + " tiết trống giữa các tiết của GV"); }
+      else goods.push("nối liền tiết của GV");
+
+      if (cHole < 0) { cost -= 20; goods.push("lấp tiết trống của lớp"); }
+      if (sameSubjectClash) { cost += 60; warns.push("trùng môn cùng ngày"); }
+      cost += dayIdx(day) * 2 + buoiIdx(buoi) + t * 0.1;   // gentle tie-break: sooner in the week
+
       out.push({
-        day: day, buoi: buoi, tiet: tiet,
-        sameSubjectClash: !!(subject && daySubjects[day] && daySubjects[day][subject]),
-        dayLoad: dayLoad[day] || 0
+        day: day, buoi: buoi, tiet: tiet, cost: cost, warns: warns, goods: goods,
+        sameSubjectClash: sameSubjectClash, dayLoad: cDay
       });
     });
-    out.sort(function (a, b) {
-      if (a.sameSubjectClash !== b.sameSubjectClash) return a.sameSubjectClash ? 1 : -1;
-      if (a.dayLoad !== b.dayLoad) return a.dayLoad - b.dayLoad;
-      var d = dayIdx(a.day) - dayIdx(b.day);
-      if (d !== 0) return d;
-      var bu = buoiIdx(a.buoi) - buoiIdx(b.buoi);
-      if (bu !== 0) return bu;
-      return (+a.tiet) - (+b.tiet);
-    });
+    out.sort(function (a, b) { return a.cost - b.cost; });
     return out;
   }
 
@@ -2605,7 +2650,7 @@
             // pre-fill the most sensible makeup slot right away so picking "Bù vào
             // tuần sau" is a single click in the common case — still overridable below.
             if (select.value === FALLBACK_MAKEUP && !absence.makeupSlot) {
-              var firstCandidate = findMakeupCandidates(absence.cls, absence.teacher, absence.subject)[0];
+              var firstCandidate = findMakeupCandidates(absence.cls, absence.teacher, absence.subject, absence)[0];
               if (firstCandidate) absence.makeupSlot = firstCandidate;
             }
             saveAbsencesToStorage();
@@ -2626,7 +2671,7 @@
           } else {
             substTd.appendChild(el("div", { style: "font-size:11px; color:var(--ink-faint); margin-top:6px;", text: "Chưa có bảng phân công để đối chiếu định mức — tải ở tab \"Phân công\" để xem tác động." }));
           }
-          var candidates2 = findMakeupCandidates(a.cls, a.teacher, a.subject);
+          var candidates2 = findMakeupCandidates(a.cls, a.teacher, a.subject, a);
           var makeupSel = el("select", { class: "subst-select" + (!a.makeupSlot ? " missing" : ""), style: "margin-top:6px;" }, []);
           var mNone = el("option", { value: "" }, []); mNone.textContent = "— Chọn tiết bù (tuần sau) —";
           makeupSel.appendChild(mNone);
@@ -2634,8 +2679,7 @@
             var val = s.day + "|" + s.buoi + "|" + s.tiet;
             var o = el("option", { value: val }, []);
             o.textContent = slotLabel(s.day, s.buoi, s.tiet) +
-              (s.sameSubjectClash ? " (trùng môn cùng ngày)" : "") +
-              (!s.sameSubjectClash && s.dayLoad === 0 ? " (ngày trống)" : "");
+              (s.warns.length ? "  ⚠ " + s.warns.join("; ") : "  ✔ " + s.goods.join(" + "));
             if (a.makeupSlot && a.makeupSlot.day === s.day && a.makeupSlot.buoi === s.buoi && a.makeupSlot.tiet === s.tiet) o.selected = true;
             makeupSel.appendChild(o);
           });
@@ -2651,6 +2695,17 @@
             };
           })(a);
           substTd.appendChild(makeupSel);
+          if (a.makeupSlot) {
+            var chosen = candidates2.filter(function (s) { return s.day === a.makeupSlot.day && s.buoi === a.makeupSlot.buoi && s.tiet === a.makeupSlot.tiet; })[0];
+            if (chosen) {
+              substTd.appendChild(el("div", {
+                style: "font-size:11px; margin-top:4px; color:" + (chosen.warns.length ? "var(--danger)" : "var(--sang)") + ";",
+                text: chosen.warns.length
+                  ? "⚠ Tiết bù này chưa thuận tiện: " + chosen.warns.join("; ") + "."
+                  : "✔ Thuận tiện: " + chosen.goods.join(" + ") + " — không ai phải đi thêm chuyến."
+              }));
+            }
+          }
           if (!candidates2.length) {
             substTd.appendChild(el("div", { style: "font-size:11px; color:var(--danger); margin-top:4px;", text: "Không tìm được tiết trống nào cho cả lớp " + a.cls + " và GV " + a.teacher + " trong tuần sau." }));
           }
@@ -3053,98 +3108,459 @@
     return out;
   }
 
-  // Fills only the EMPTY cells of the current draft — anything already typed
-  // in (from an uploaded TKB or by hand) is left untouched. Stops adding more
-  // periods to a teacher once they'd cross the weekly cap; whatever couldn't
-  // be placed (cap reached or no free conflict-free slot) is reported back,
-  // never silently guessed into an overloaded or conflicting cell.
-  function autoFillDraftFromAssignment(weeklyCap) {
-    var doc = latestAssignmentDoc();
-    if (!doc || !state.draft) return { error: "Cần có bản nháp và bảng phân công trước." };
+  /* ============ Timetable optimiser (auto-fill) ============ */
+  // Weights of the "inconvenience" score the optimiser minimises. Lower total =
+  // a timetable where students and teachers make fewer, fuller trips to school.
+  var OPT_W = {
+    // per class (student side)
+    classSession: 45,      // every buổi a class has to attend = one trip to school
+    afternoon: 6,          // gentle preference for mornings when everything else is equal
+    classLone: 90,         // a buổi with only 1 period for the class
+    classTwo: 25,          // a buổi with only 2 periods
+    classHole: 35,         // each empty tiết in the middle of a buổi (students waiting around)
+    classDay: 25,          // every day the class comes at all
+    classTwiceDay: 70,     // coming in the morning AND again in the afternoon of one day
+    sameSubject: 30,       // same subject twice in a day for one class ...
+    sameSubjectAdj: 4,     // ... unless the two periods are back-to-back
+    // per teacher
+    teacherSession: 45,
+    teacherLoneDay: 300,   // the teacher's ONLY period that day: comes in for a single tiết
+    teacherLoneSession: 70,// 1 period in a buổi although they teach the other buổi too
+    teacherHole: 30,
+    teacherDay: 35,
+    teacherTwiceDay: 60,
+    unplaced: 900
+  };
 
-    var draft = state.draft;
-    var classesInDraft = {};
-    draft.classes.forEach(function (c) { classesInDraft[c] = true; });
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
 
-    // teacher -> tkb display name, and how many periods they already occupy
-    // in the draft as it stands (from pre-filled/hand-typed cells)
-    var usedNames = {};
-    function tkbNameFor(p) {
-      var gn = (p.ten || "").trim().split(/\s+/).pop().toUpperCase();
-      return (p.gender === "M" ? "T." : "C.") + gn;
+  // P = {nSlots, slotTiet[], slotSess[], sessions[{day,buoi,slots[]}], nDays, nClasses,
+  //      nTeachers, nSubjects, fixed[{c,s,subj,t}], units[{c,subj,t}], seed, iters, timeMs}
+  // Returns {unitSlot[], cost}. Hard rules: a class and a teacher can each be in
+  // only one place per slot; fixed cells never move. Everything else is scored.
+  function solveTimetable(P) {
+    var W = OPT_W;
+    var nS = P.nSlots, nC = P.nClasses, nT = P.nTeachers, nU = P.units.length;
+    var rnd = mulberry32(P.seed || 12345);
+    var c, t, s, i;
+
+    var classSubj = [], classUnit = [], teacherUnit = [];
+    for (c = 0; c < nC; c++) { classSubj.push(new Int16Array(nS).fill(-1)); classUnit.push(new Int32Array(nS).fill(-1)); }
+    for (t = 0; t < nT; t++) teacherUnit.push(new Int32Array(nS).fill(-1));
+    P.fixed.forEach(function (f) {
+      classSubj[f.c][f.s] = f.subj >= 0 ? f.subj : 0;
+      classUnit[f.c][f.s] = -2;
+      if (f.t >= 0) teacherUnit[f.t][f.s] = -2;
+    });
+
+    // sessions grouped by day
+    var daySessions = [];
+    for (i = 0; i < P.nDays; i++) daySessions.push([]);
+    P.sessions.forEach(function (se) { daySessions[se.day].push(se); });
+
+    var cntTmp = new Int8Array(P.nSubjects + 1), lastTmp = new Int16Array(P.nSubjects + 1), usedTmp = [];
+
+    function classCost(cc) {
+      var subj = classSubj[cc], cost = 0;
+      for (var d = 0; d < P.nDays; d++) {
+        var att = 0, ses = daySessions[d];
+        for (var a = 0; a < ses.length; a++) {
+          var sl = ses[a].slots, n = 0, mn = 99, mx = -1;
+          for (var k = 0; k < sl.length; k++) {
+            if (subj[sl[k]] >= 0) { n++; var tt = P.slotTiet[sl[k]]; if (tt < mn) mn = tt; if (tt > mx) mx = tt; }
+          }
+          if (n) {
+            att++;
+            cost += W.classSession + (ses[a].buoi === 1 ? W.afternoon : 0);
+            if (n === 1) cost += W.classLone; else if (n === 2) cost += W.classTwo;
+            cost += W.classHole * ((mx - mn + 1) - n);
+          }
+          // same subject twice in the day
+          for (k = 0; k < sl.length; k++) {
+            var j = subj[sl[k]];
+            if (j < 0) continue;
+            if (cntTmp[j] > 0) {
+              var prev = lastTmp[j];
+              cost += (cntTmp[j] === 1 && prev === sl[k] - 1 && P.slotSess[prev] === P.slotSess[sl[k]]) ? W.sameSubjectAdj : W.sameSubject;
+            } else usedTmp.push(j);
+            cntTmp[j]++; lastTmp[j] = sl[k];
+          }
+        }
+        for (var u = 0; u < usedTmp.length; u++) cntTmp[usedTmp[u]] = 0;
+        usedTmp.length = 0;
+        if (att > 0) cost += W.classDay;
+        if (att === 2) cost += W.classTwiceDay;
+      }
+      return cost;
     }
-    var teacherCurrentLoad = {};
-    draft.classes.forEach(function (cls) {
-      draft.scheduleByClass[cls].forEach(function (e) {
-        if (e.teacher) teacherCurrentLoad[e.teacher] = (teacherCurrentLoad[e.teacher] || 0) + 1;
-      });
+
+    function teacherCost(tt0) {
+      var occ = teacherUnit[tt0], cost = 0;
+      for (var d = 0; d < P.nDays; d++) {
+        var att = 0, total = 0, ses = daySessions[d], lone = false, loneCnt = 0;
+        for (var a = 0; a < ses.length; a++) {
+          var sl = ses[a].slots, n = 0, mn = 99, mx = -1;
+          for (var k = 0; k < sl.length; k++) {
+            if (occ[sl[k]] !== -1) { n++; var tt = P.slotTiet[sl[k]]; if (tt < mn) mn = tt; if (tt > mx) mx = tt; }
+          }
+          if (n) {
+            att++; total += n;
+            cost += W.teacherSession + (ses[a].buoi === 1 ? W.afternoon : 0);
+            cost += W.teacherHole * ((mx - mn + 1) - n);
+            if (n === 1) loneCnt++;
+          }
+        }
+        if (att > 0) {
+          cost += W.teacherDay;
+          if (total === 1) cost += W.teacherLoneDay;
+          else cost += W.teacherLoneSession * loneCnt;
+        }
+        if (att === 2) cost += W.teacherTwiceDay;
+      }
+      return cost;
+    }
+
+    var unitSlot = new Int16Array(nU).fill(-1);
+    var uC = new Int16Array(nU), uS = new Int16Array(nU), uT = new Int16Array(nU);
+    var classUnits = [];
+    for (c = 0; c < nC; c++) classUnits.push([]);
+    P.units.forEach(function (u, idx) { uC[idx] = u.c; uS[idx] = u.subj; uT[idx] = u.t; classUnits[u.c].push(idx); });
+
+    function place(u, sl) {
+      classSubj[uC[u]][sl] = uS[u]; classUnit[uC[u]][sl] = u; teacherUnit[uT[u]][sl] = u; unitSlot[u] = sl;
+    }
+    function unplace(u) {
+      var sl = unitSlot[u];
+      if (sl < 0) return;
+      classSubj[uC[u]][sl] = -1; classUnit[uC[u]][sl] = -1; teacherUnit[uT[u]][sl] = -1; unitSlot[u] = -1;
+    }
+
+    var cCost = new Float64Array(nC), tCost = new Float64Array(nT);
+    for (c = 0; c < nC; c++) cCost[c] = classCost(c);
+    for (t = 0; t < nT; t++) tCost[t] = teacherCost(t);
+    var unplacedCount = nU;
+
+    // ---- attempt a set of unit->slot changes; returns delta or null (state restored) ----
+    var oldSlots = [0, 0, 0, 0], newCC = [0, 0, 0, 0], newTC = [0, 0, 0, 0], affC = [0, 0, 0, 0], affT = [0, 0, 0, 0];
+    var nAffC = 0, nAffT = 0, lastUnplacedGain = 0;
+    function attempt(us, ns, k) {
+      var j, ok = true, placed = 0;
+      for (j = 0; j < k; j++) oldSlots[j] = unitSlot[us[j]];
+      for (j = 0; j < k; j++) unplace(us[j]);
+      for (j = 0; j < k; j++) {
+        var u = us[j], sl = ns[j];
+        if (classUnit[uC[u]][sl] !== -1 || teacherUnit[uT[u]][sl] !== -1) { ok = false; break; }
+        place(u, sl); placed++;
+      }
+      if (!ok) {
+        for (j = 0; j < placed; j++) unplace(us[j]);
+        for (j = 0; j < k; j++) if (oldSlots[j] >= 0) place(us[j], oldSlots[j]);
+        return null;
+      }
+      nAffC = 0; nAffT = 0; lastUnplacedGain = 0;
+      var before = 0, after = 0;
+      for (j = 0; j < k; j++) {
+        var cu = uC[us[j]], tu = uT[us[j]], f, dupe;
+        for (f = 0, dupe = false; f < nAffC; f++) if (affC[f] === cu) dupe = true;
+        if (!dupe) { affC[nAffC++] = cu; }
+        for (f = 0, dupe = false; f < nAffT; f++) if (affT[f] === tu) dupe = true;
+        if (!dupe) { affT[nAffT++] = tu; }
+        if (oldSlots[j] < 0) lastUnplacedGain++;
+      }
+      for (j = 0; j < nAffC; j++) { before += cCost[affC[j]]; newCC[j] = classCost(affC[j]); after += newCC[j]; }
+      for (j = 0; j < nAffT; j++) { before += tCost[affT[j]]; newTC[j] = teacherCost(affT[j]); after += newTC[j]; }
+      after -= W.unplaced * lastUnplacedGain;
+      return after - before;
+    }
+    function commit() {
+      var j;
+      for (j = 0; j < nAffC; j++) cCost[affC[j]] = newCC[j];
+      for (j = 0; j < nAffT; j++) tCost[affT[j]] = newTC[j];
+      unplacedCount -= lastUnplacedGain;
+    }
+    function revert(us, k) {
+      var j;
+      for (j = 0; j < k; j++) unplace(us[j]);
+      for (j = 0; j < k; j++) if (oldSlots[j] >= 0) place(us[j], oldSlots[j]);
+    }
+
+    // ---- greedy start: each unit goes where it adds the least inconvenience ----
+    var order = [];
+    for (i = 0; i < nU; i++) order.push(i);
+    for (i = order.length - 1; i > 0; i--) { var r0 = Math.floor(rnd() * (i + 1)), tmp = order[i]; order[i] = order[r0]; order[r0] = tmp; }
+    var one = [0], oneS = [0];
+    order.forEach(function (u) {
+      var best = -1, bestD = Infinity;
+      for (var sl = 0; sl < nS; sl++) {
+        if (classUnit[uC[u]][sl] !== -1 || teacherUnit[uT[u]][sl] !== -1) continue;
+        one[0] = u; oneS[0] = sl;
+        var d = attempt(one, oneS, 1);
+        if (d === null) continue;
+        revert(one, 1);
+        d += rnd() * 0.5;   // random tie-break
+        if (d < bestD) { bestD = d; best = sl; }
+      }
+      if (best >= 0) { one[0] = u; oneS[0] = best; attempt(one, oneS, 1); commit(); }
     });
 
-    var targets = [];
-    var cappedTeachers = {};
-    doc.staff.forEach(function (p) {
-      var name = tkbNameFor(p);
-      buildAutoFillTargetsForStaff(p, name, draft.classes).forEach(function (t) {
-        if (classesInDraft[t.cls]) targets.push(t);
-      });
-    });
-    targets.sort(function (a, b) { return b.periods - a.periods; });
+    // ---- simulated annealing ----
+    var iters = P.iters || 600000, tStart = 60, tEnd = 0.6;
+    var t0 = Date.now(), timeMs = P.timeMs || 6000;
+    var pairU = [0, 0], pairS = [0, 0];
+    var temp = tStart;
+    for (var it = 0; it < iters; it++) {
+      if ((it & 1023) === 0) {
+        var frac = Math.max(it / iters, (Date.now() - t0) / timeMs);
+        if (frac >= 1) break;
+        if (P.progress && (it & 65535) === 0) P.progress(frac);
+        temp = tStart * Math.pow(tEnd / tStart, frac);
+      }
+      if (!nU) break;
+      var u1 = Math.floor(rnd() * nU), mv = rnd(), delta = null, k = 0;
+      if (mv < 0.6) {
+        var sn = Math.floor(rnd() * nS);
+        if (sn === unitSlot[u1]) continue;
+        if (classUnit[uC[u1]][sn] !== -1) continue;
+        var occ = teacherUnit[uT[u1]][sn];
+        if (occ === -1) { pairU[0] = u1; pairS[0] = sn; k = 1; }
+        else if (occ >= 0) {                     // teacher busy with another class: try to bump that period elsewhere
+          pairU[0] = u1; pairS[0] = sn; pairU[1] = occ; pairS[1] = Math.floor(rnd() * nS); k = 2;
+        } else continue;
+      } else if (mv < 0.85) {                    // swap two periods of the same class
+        var list = classUnits[uC[u1]];
+        if (list.length < 2) continue;
+        var u2 = list[Math.floor(rnd() * list.length)];
+        if (u2 === u1 || unitSlot[u1] < 0 || unitSlot[u2] < 0) continue;
+        pairU[0] = u1; pairS[0] = unitSlot[u2]; pairU[1] = u2; pairS[1] = unitSlot[u1]; k = 2;
+      } else {                                   // swap the time slots of two periods of DIFFERENT classes
+        var u3 = Math.floor(rnd() * nU);
+        if (u3 === u1 || unitSlot[u1] < 0 || unitSlot[u3] < 0 || unitSlot[u1] === unitSlot[u3]) continue;
+        pairU[0] = u1; pairS[0] = unitSlot[u3]; pairU[1] = u3; pairS[1] = unitSlot[u1]; k = 2;
+      }
+      delta = attempt(pairU, pairS, k);
+      if (delta === null) continue;
+      if (delta <= 0 || rnd() < Math.exp(-delta / temp)) commit();
+      else revert(pairU, k);
+    }
 
-    // index of empty cells per class, and current busy sets from ALREADY
-    // filled cells (pre-existing + whatever this pass places as it goes)
-    var classBusy = {}, teacherBusy = {}, classDayLoad = {}, classDaySubj = {};
+    var total = 0;
+    for (c = 0; c < nC; c++) total += cCost[c];
+    for (t = 0; t < nT; t++) total += tCost[t];
+    total += W.unplaced * unplacedCount;
+    return { unitSlot: unitSlot, cost: total, unplaced: unplacedCount };
+  }
+
+  // Convenience figures read straight off a draft (used to show the result, and to compare runs).
+  function draftMetrics(draft) {
+    var m = { classSessions: 0, classHoles: 0, classTwiceDays: 0, classLoneSessions: 0,
+              teacherSessions: 0, teacherHoles: 0, teacherTwiceDays: 0, teacherLoneDays: 0, teacherDays: 0, classes: draft.classes.length };
+    var teach = {};
     draft.classes.forEach(function (cls) {
-      classBusy[cls] = {}; classDayLoad[cls] = {}; classDaySubj[cls] = {};
-      draft.scheduleByClass[cls].forEach(function (e) {
-        var key = e.day + "|" + e.buoi + "|" + e.tiet;
-        if (e.subject || e.teacher) {
-          classBusy[cls][key] = true;
-          if (e.teacher) { teacherBusy[key] = teacherBusy[key] || {}; teacherBusy[key][e.teacher] = true; }
-          classDayLoad[cls][e.day] = (classDayLoad[cls][e.day] || 0) + 1;
-          classDaySubj[cls][e.day] = classDaySubj[cls][e.day] || {};
-          if (e.subject) classDaySubj[cls][e.day][e.subject] = true;
+      var byDay = {};
+      (draft.scheduleByClass[cls] || []).forEach(function (e) {
+        if (!e.subject && !e.teacher) return;
+        var dk = e.day; byDay[dk] = byDay[dk] || {}; (byDay[dk][e.buoi] = byDay[dk][e.buoi] || []).push(+e.tiet);
+        if (e.teacher) {
+          teach[e.teacher] = teach[e.teacher] || {};
+          teach[e.teacher][dk] = teach[e.teacher][dk] || {};
+          (teach[e.teacher][dk][e.buoi] = teach[e.teacher][dk][e.buoi] || []).push(+e.tiet);
         }
       });
+      Object.keys(byDay).forEach(function (d) {
+        var bs = Object.keys(byDay[d]);
+        if (bs.length === 2) m.classTwiceDays++;
+        bs.forEach(function (b) {
+          var ts = byDay[d][b]; m.classSessions++;
+          if (ts.length === 1) m.classLoneSessions++;
+          m.classHoles += (Math.max.apply(null, ts) - Math.min.apply(null, ts) + 1) - ts.length;
+        });
+      });
+    });
+    Object.keys(teach).forEach(function (tn) {
+      Object.keys(teach[tn]).forEach(function (d) {
+        var bs = Object.keys(teach[tn][d]), total = 0;
+        m.teacherDays++;
+        if (bs.length === 2) m.teacherTwiceDays++;
+        bs.forEach(function (b) {
+          var ts = teach[tn][d][b]; total += ts.length; m.teacherSessions++;
+          m.teacherHoles += (Math.max.apply(null, ts) - Math.min.apply(null, ts) + 1) - ts.length;
+        });
+        if (total === 1) m.teacherLoneDays++;
+      });
+    });
+    return m;
+  }
+
+  // "C.HẰNG" for the first teacher with a given short name; later namesakes get the
+  // initial of their middle name (Lê Đặng Thị Xuân Hằng → "C.X HẰNG"), as in the school's own TKB files.
+  function assignmentShortNames(staff) {
+    var seen = {};
+    return staff.map(function (p) {
+      var gn = (p.ten || "").trim().split(/\s+/).pop().toUpperCase();
+      var pre = p.gender === "M" ? "T." : "C.";
+      var name = pre + gn;
+      if (!seen[name]) { seen[name] = true; return name; }
+      var hoWords = (p.ho || "").trim().split(/\s+/);
+      var ini = (hoWords[hoWords.length - 1] || "").charAt(0).toUpperCase();
+      var alt = pre + ini + " " + gn, n = 2;
+      while (seen[alt]) alt = pre + ini + n++ + " " + gn;
+      seen[alt] = true;
+      return alt;
+    });
+  }
+
+  // Re-plans every period that the auto-fill placed earlier (cells typed by hand
+  // or coming from an uploaded TKB are treated as fixed) so that classes and
+  // teachers make as few, and as full, trips to school as possible, while never
+  // double-booking a class or teacher and never exceeding `weeklyCap` per teacher.
+  // Asynchronous: reports progress through onProgress(0..1) and delivers the result
+  // (or {error}) through done(result).
+  function autoFillDraftFromAssignment(weeklyCap, onProgress, done) {
+    var doc = latestAssignmentDoc();
+    if (!doc || !state.draft) { done({ error: "Cần có bản nháp và bảng phân công trước." }); return; }
+    var draft = state.draft;
+    if (!draft.classes.length) { done({ error: "Bản nháp chưa có lớp nào." }); return; }
+
+    // 1) forget what a previous auto-fill put down (never touch manual / uploaded cells)
+    draft.classes.forEach(function (cls) {
+      (draft.scheduleByClass[cls] || []).forEach(function (e) {
+        if (e.auto) { e.subject = ""; e.teacher = ""; e.auto = false; }
+      });
     });
 
-    var placed = 0, unplaced = [];
+    // 2) what has to be taught
+    var classesInDraft = {};
+    draft.classes.forEach(function (cn) { classesInDraft[cn] = true; });
+    var names = assignmentShortNames(doc.staff);
+    var targets = [];
+    doc.staff.forEach(function (p, i) {
+      buildAutoFillTargetsForStaff(p, names[i], draft.classes).forEach(function (tg) {
+        if (classesInDraft[tg.cls]) targets.push(tg);
+      });
+    });
+
+    // periods already in the draft (uploaded / typed) count towards the quota and the weekly cap
+    var fixedLoad = {}, fixedKey = {};
+    draft.classes.forEach(function (cls) {
+      draft.scheduleByClass[cls].forEach(function (e) {
+        if (!e.teacher) return;
+        fixedLoad[e.teacher] = (fixedLoad[e.teacher] || 0) + 1;
+        var k = cls + "|" + (e.subject || "").toUpperCase() + "|" + e.teacher;
+        fixedKey[k] = (fixedKey[k] || 0) + 1;
+      });
+    });
     targets.forEach(function (tg) {
-      var entries = draft.scheduleByClass[tg.cls];
-      var emptySlots = entries.filter(function (e) { return !e.subject && !e.teacher; });
-      for (var i = 0; i < tg.periods; i++) {
-        var load = teacherCurrentLoad[tg.teacher] || 0;
-        if (load >= weeklyCap) { cappedTeachers[tg.teacher] = true; unplaced.push(tg); continue; }
-        var candidates = emptySlots.filter(function (e) {
-          var key = e.day + "|" + e.buoi + "|" + e.tiet;
-          if (classBusy[tg.cls][key]) return false;
-          if ((teacherBusy[key] || {})[tg.teacher]) return false;
-          return true;
-        }).map(function (e) {
-          var clash = !!(classDaySubj[tg.cls][e.day] && classDaySubj[tg.cls][e.day][tg.subject]);
-          return { e: e, clash: clash, load: classDayLoad[tg.cls][e.day] || 0 };
-        });
-        candidates.sort(function (a, b) {
-          if (a.clash !== b.clash) return a.clash ? 1 : -1;
-          if (a.load !== b.load) return a.load - b.load;
-          var d = dayIdx(a.e.day) - dayIdx(b.e.day); if (d !== 0) return d;
-          var bu = buoiIdx(a.e.buoi) - buoiIdx(b.e.buoi); if (bu !== 0) return bu;
-          return (+a.e.tiet) - (+b.e.tiet);
-        });
-        if (!candidates.length) { unplaced.push(tg); continue; }
-        var e = candidates[0].e;
-        var key = e.day + "|" + e.buoi + "|" + e.tiet;
-        e.subject = tg.subject; e.teacher = tg.teacher;
-        classBusy[tg.cls][key] = true;
-        teacherBusy[key] = teacherBusy[key] || {}; teacherBusy[key][tg.teacher] = true;
-        classDayLoad[tg.cls][e.day] = (classDayLoad[tg.cls][e.day] || 0) + 1;
-        classDaySubj[tg.cls][e.day] = classDaySubj[tg.cls][e.day] || {};
-        classDaySubj[tg.cls][e.day][tg.subject] = true;
-        teacherCurrentLoad[tg.teacher] = load + 1;
-        placed++;
+      var k = tg.cls + "|" + tg.subject.toUpperCase() + "|" + tg.teacher;
+      var have = Math.min(tg.periods, fixedKey[k] || 0);
+      tg.periods -= have; if (fixedKey[k]) fixedKey[k] -= have;
+    });
+    targets = targets.filter(function (tg) { return tg.periods > 0; });
+
+    // weekly cap: shave the biggest (class, subject) share first so no class loses a subject entirely
+    var byTeacher = {}, droppedTotal = 0, cappedTeachers = {};
+    targets.forEach(function (tg) { (byTeacher[tg.teacher] = byTeacher[tg.teacher] || []).push(tg); });
+    Object.keys(byTeacher).forEach(function (tn) {
+      var list = byTeacher[tn], room = Math.max(0, weeklyCap - (fixedLoad[tn] || 0));
+      var sum = list.reduce(function (a, b) { return a + b.periods; }, 0);
+      while (sum > room) {
+        var big = list[0];
+        list.forEach(function (x) { if (x.periods > big.periods) big = x; });
+        big.periods--; sum--; droppedTotal++; cappedTeachers[tn] = true;
       }
     });
+    targets = targets.filter(function (tg) { return tg.periods > 0; });
 
-    return { placed: placed, unplaced: unplaced.length, cappedTeacherCount: Object.keys(cappedTeachers).length };
+    // 3) the optimisation problem
+    var refEntries = draft.scheduleByClass[draft.classes[0]];
+    var nSlots = refEntries.length;
+    var sessions = [], slotSess = new Int16Array(nSlots), slotTiet = new Int16Array(nSlots);
+    var dayList = [], curKey = null;
+    refEntries.forEach(function (e, i) {
+      var key = e.day + "|" + e.buoi;
+      if (key !== curKey) {
+        var di = dayList.indexOf(e.day); if (di < 0) { dayList.push(e.day); di = dayList.length - 1; }
+        sessions.push({ day: di, buoi: e.buoi === "SÁNG" ? 0 : 1, slots: [] });
+        curKey = key;
+      }
+      sessions[sessions.length - 1].slots.push(i);
+      slotSess[i] = sessions.length - 1; slotTiet[i] = +e.tiet || (i + 1);
+    });
+    var classIdx = {}; draft.classes.forEach(function (cn, i) { classIdx[cn] = i; });
+    var subjIds = {}, teachIds = {};
+    function sid(x) { x = (x || "").toUpperCase(); if (!(x in subjIds)) subjIds[x] = Object.keys(subjIds).length; return subjIds[x]; }
+    function tid(x) { if (!(x in teachIds)) teachIds[x] = Object.keys(teachIds).length; return teachIds[x]; }
+    var fixed = [];
+    draft.classes.forEach(function (cls) {
+      draft.scheduleByClass[cls].forEach(function (e, i) {
+        if (e.subject || e.teacher) fixed.push({ c: classIdx[cls], s: i, subj: sid(e.subject), t: e.teacher ? tid(e.teacher) : -1 });
+      });
+    });
+    var units = [];
+    targets.forEach(function (tg) {
+      var su = sid(tg.subject), tu = tid(tg.teacher), cu = classIdx[tg.cls];
+      for (var k = 0; k < tg.periods; k++) units.push({ c: cu, subj: su, t: tu });
+    });
+
+    var problem = {
+      nSlots: nSlots, slotSess: Array.from(slotSess), slotTiet: Array.from(slotTiet), sessions: sessions, nDays: dayList.length,
+      nClasses: draft.classes.length, nTeachers: Object.keys(teachIds).length, nSubjects: Object.keys(subjIds).length,
+      fixed: fixed, units: units, seed: 20260928, iters: 16000000, timeMs: 14000
+    };
+
+    // 4) write back, tagging the cells as auto-placed so a re-run can re-plan them
+    function apply(sol) {
+      var subjName = {}, teachName = {};
+      Object.keys(subjIds).forEach(function (k) { subjName[subjIds[k]] = k; });
+      Object.keys(teachIds).forEach(function (k) { teachName[teachIds[k]] = k; });
+      var placed = 0;
+      units.forEach(function (u, idx) {
+        var sl = sol.unitSlot[idx];
+        if (sl < 0) return;
+        var e = draft.scheduleByClass[draft.classes[u.c]][sl];
+        e.subject = subjName[u.subj]; e.teacher = teachName[u.t]; e.auto = true;
+        placed++;
+      });
+      return {
+        placed: placed, unplaced: (units.length - placed) + droppedTotal,
+        cappedTeacherCount: Object.keys(cappedTeachers).length,
+        metrics: draftMetrics(draft)
+      };
+    }
+    runTimetableSolver(problem, onProgress, function (sol) { done(apply(sol)); });
+    return null;   // result arrives through `done`
+  }
+
+  // Runs the optimiser in a background thread (so the page stays responsive); falls
+  // back to running it inline, with a shorter budget, if workers are unavailable.
+  function runTimetableSolver(problem, onProgress, cb) {
+    var finished = false;
+    function inline() {
+      if (finished) return;
+      finished = true;
+      problem.iters = Math.min(problem.iters, 3000000); problem.timeMs = 5000;
+      cb(solveTimetable(problem));
+    }
+    try {
+      var src = "var OPT_W=" + JSON.stringify(OPT_W) + ";" + mulberry32.toString() + ";" + solveTimetable.toString() + ";" +
+        "self.onmessage=function(e){var P=e.data;P.progress=function(f){self.postMessage({progress:f});};" +
+        "var r=solveTimetable(P);self.postMessage({unitSlot:Array.from(r.unitSlot),cost:r.cost,unplaced:r.unplaced});};";
+      var url = URL.createObjectURL(new Blob([src], { type: "application/javascript" }));
+      var w = new Worker(url);
+      w.onmessage = function (ev) {
+        if (ev.data.progress !== undefined) { if (onProgress) onProgress(ev.data.progress); return; }
+        finished = true; w.terminate(); URL.revokeObjectURL(url);
+        cb(ev.data);
+      };
+      w.onerror = function () { w.terminate(); inline(); };
+      w.postMessage(problem);
+    } catch (err) { inline(); }
   }
 
   function renderDraftClassSelect() {
@@ -3210,8 +3626,10 @@
       tr.appendChild(teachTd);
 
       function commit() {
-        e.subject = subjInput.value.trim();
-        e.teacher = teachInput.value.trim();
+        var newSubj = subjInput.value.trim(), newTeach = teachInput.value.trim();
+        if (newSubj !== (e.subject || "") || newTeach !== (e.teacher || "")) e.auto = false;   // hand-edited → now fixed
+        e.subject = newSubj;
+        e.teacher = newTeach;
         subjInput.className = "draft-input" + (e.subject ? "" : " empty");
         teachInput.className = "draft-input" + (e.teacher ? "" : " empty");
         tr.className = (!e.subject && !e.teacher) ? "draft-row-empty" : "";
@@ -3957,14 +4375,31 @@
       var statusEl = $("#autoFillStatus");
       if (!state.draft) { statusEl.textContent = "Hãy bấm \"Tạo bản nháp\" trước."; return; }
       if (!latestAssignmentDoc()) { statusEl.textContent = "Cần tải bảng phân công trước."; return; }
-      var res = autoFillDraftFromAssignment(25);
-      if (res.error) { statusEl.textContent = res.error; return; }
-      touchDraft();
-      renderDraftTable();
-      var bits = [res.placed + " tiết đã tự điền"];
-      if (res.cappedTeacherCount) bits.push(res.cappedTeacherCount + " GV đã chạm trần 25 tiết/tuần (dừng điền thêm)");
-      if (res.unplaced) bits.push(res.unplaced + " tiết chưa xếp được (hết chỗ trống hoặc trùng lịch) — cần điền tay");
-      statusEl.textContent = bits.join(" · ") + ". Số liệu là ước tính từ phân công (chia đều theo lớp) — bạn nên rà lại trước khi Chốt. Tab \"Dạy thay\" đã dùng bản nháp này, bạn có thể đăng ký GV nghỉ ngay mà chưa cần xuất Excel.";
+      var btn = $("#autoFillDraftBtn");
+      btn.disabled = true;
+      statusEl.textContent = "Đang xếp và tối ưu lịch… 0% (khoảng 15 giây, bạn có thể chờ trên trang này)";
+      function finish(res) {
+        btn.disabled = false;
+        if (res.error) { statusEl.textContent = res.error; return; }
+        touchDraft();
+        renderDraftTable();
+        var m = res.metrics;
+        var bits = [res.placed + " tiết đã xếp"];
+        if (res.cappedTeacherCount) bits.push(res.cappedTeacherCount + " GV chạm trần 25 tiết/tuần");
+        if (res.unplaced) bits.push(res.unplaced + " tiết chưa xếp được — cần điền tay");
+        var conv = "Lớp: trung bình " + (m.classSessions / Math.max(1, m.classes)).toFixed(1) + " buổi học/tuần, " +
+          m.classHoles + " tiết trống giữa buổi, " + m.classTwiceDays + " lượt học cả sáng lẫn chiều một ngày. " +
+          "GV: " + m.teacherLoneDays + " ngày chỉ có 1 tiết, " + m.teacherTwiceDays + " lượt dạy cả sáng lẫn chiều, " + m.teacherHoles + " tiết trống giữa buổi.";
+        statusEl.textContent = bits.join(" · ") + ". " + conv +
+          " Số tiết mỗi lớp là ước tính từ phân công (chia đều) — bạn nên rà lại trước khi Chốt. Bấm lại nút này để xếp lại (ô bạn đã gõ tay được giữ nguyên). Tab \"Dạy thay\" đã dùng bản nháp này.";
+      }
+      setTimeout(function () {
+        try {
+          autoFillDraftFromAssignment(25, function (f) {
+            statusEl.textContent = "Đang xếp và tối ưu lịch… " + Math.round(f * 100) + "%";
+          }, finish);
+        } catch (err) { finish({ error: "Lỗi khi xếp lịch: " + ((err && err.message) || err) }); }
+      }, 30);
     };
     $("#goLeaveBtn").onclick = function () {
       state.viewMode = "leave";
