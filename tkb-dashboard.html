@@ -2401,6 +2401,7 @@
       var cost = 0, warns = [], goods = [];
       if (cDay === 0) { cost += 1000; warns.push("lớp phải đến trường thêm 1 ngày chỉ vì tiết này"); }
       else if (!cSame.length) { cost += 500; warns.push("lớp phải đến thêm buổi " + (buoi === "SÁNG" ? "sáng" : "chiều") + " ngày này"); }
+      else if (cSame.length === 1) { cost += 300; warns.push("lớp chỉ học 2 tiết trong buổi này"); }
       else if (cHole > 0) { cost += 120 * cHole; warns.push("tạo " + cHole + " tiết trống giữa các tiết của lớp"); }
       else goods.push("nối liền tiết của lớp");
 
@@ -3139,11 +3140,11 @@
     // per class (student side)
     classSession: 45,      // every buổi a class has to attend = one trip to school
     afternoon: 6,          // gentle preference for mornings when everything else is equal
-    classLone: 90,         // a buổi with only 1 period for the class
-    classTwo: 25,          // a buổi with only 2 periods
+    classLone: 4000,       // TOP PRIORITY: students coming to school for a buổi of only 1 period ...
+    classTwo: 3000,        // ... or only 2 periods (dominates every other criterion below)
     classHole: 35,         // each empty tiết in the middle of a buổi (students waiting around)
     classDay: 25,          // every day the class comes at all
-    classTwiceDay: 70,     // coming in the morning AND again in the afternoon of one day
+    classTwiceDay: 400,    // 2nd priority for students: coming in the morning AND again in the afternoon of one day
     sameSubject: 30,       // same subject twice in a day for one class ...
     sameSubjectAdj: 4,     // ... unless the two periods are back-to-back
     // per teacher
@@ -3154,7 +3155,7 @@
     teacherDay: 35,
     teacherTwiceDay: 60,
     makeupBad: 500,        // a make-up period that is NOT convenient (see classMakeupBad / teacherMakeupBad)
-    unplaced: 900
+    unplaced: 20000        // leaving a lesson out is worse than any inconvenience
   };
 
   function mulberry32(a) {
@@ -3240,7 +3241,7 @@
         for (var z = 0; z < se.slots.length; z++) {
           if (subj[se.slots[z]] >= 0) { bn++; var bt = P.slotTiet[se.slots[z]]; if (bt < bmn) bmn = bt; if (bt > bmx) bmx = bt; }
         }
-        if (bn < 2 || (bmx - bmn + 1) - bn > 0) bad = true;
+        if (bn < 3 || (bmx - bmn + 1) - bn > 0) bad = true;
         if (!bad) {
           var ds = daySessions[se.day], same = 0;
           for (var y = 0; y < ds.length; y++) for (z = 0; z < ds[y].slots.length; z++) if (subj[ds[y].slots[z]] === subj[fs]) same++;
@@ -3370,22 +3371,68 @@
       if (best >= 0) { one[0] = u; oneS[0] = best; attempt(one, oneS, 1); commit(); }
     });
 
-    // ---- simulated annealing ----
-    var iters = P.iters || 600000, tStart = 60, tEnd = 0.6;
+    function classSessionCount(cc, sl) {
+      var sl2 = P.sessions[P.slotSess[sl]].slots, n = 0;
+      for (var k = 0; k < sl2.length; k++) if (classSubj[cc][sl2[k]] >= 0) n++;
+      return n;
+    }
+
+    // ---- simulated annealing, in cycles: cool down, keep the best timetable seen, reheat from it and try again ----
+    // (a single cold run can get stuck with a buổi of 1–2 periods that no single move can fix)
+    var cycles = 3, pairU = [0, 0], pairS = [0, 0];
+    function totalNow() {
+      var tot = W.unplaced * unplacedCount, x;
+      for (x = 0; x < nC; x++) tot += cCost[x];
+      for (x = 0; x < nT; x++) tot += tCost[x];
+      return tot;
+    }
+    function loadSlots(arr) {
+      var x;
+      for (x = 0; x < nU; x++) unplace(x);
+      for (x = 0; x < nU; x++) if (arr[x] >= 0) place(x, arr[x]);
+      for (x = 0; x < nC; x++) cCost[x] = classCost(x);
+      for (x = 0; x < nT; x++) tCost[x] = teacherCost(x);
+      unplacedCount = 0;
+      for (x = 0; x < nU; x++) if (unitSlot[x] < 0) unplacedCount++;
+    }
     var t0 = Date.now(), timeMs = P.timeMs || 6000;
-    var pairU = [0, 0], pairS = [0, 0];
-    var temp = tStart;
-    for (var it = 0; it < iters; it++) {
-      if ((it & 1023) === 0) {
-        var frac = Math.max(it / iters, (Date.now() - t0) / timeMs);
-        if (frac >= 1) break;
-        if (P.progress && (it & 65535) === 0) P.progress(frac);
-        temp = tStart * Math.pow(tEnd / tStart, frac);
-      }
-      if (!nU) break;
+    var bestSlots = Int16Array.from(unitSlot), bestCost = totalNow();
+    function anneal(cycle, iters, tStart, tEnd) {
+      var temp = tStart;
+      for (var it = 0; it < iters; it++) {
+        if ((it & 1023) === 0) {
+          var frac = Math.max(it / iters, ((Date.now() - t0) / timeMs - cycle / cycles) * cycles);
+          if (Date.now() - t0 > timeMs) return false;
+          if (frac >= 1) break;
+          if (P.progress && (it & 65535) === 0) P.progress(Math.min(1, (cycle + frac) / cycles));
+          temp = tStart * Math.pow(tEnd / tStart, frac);
+        }
+        if (!nU) break;
       var u1 = Math.floor(rnd() * nU), mv = rnd(), delta = null, k = 0;
-      if (mv < 0.6) {
-        var sn = Math.floor(rnd() * nS);
+      if (mv < 0.1) {                            // empty out a buổi that has only 1–2 periods: move ALL of them elsewhere at once
+        var s0 = unitSlot[u1];
+        if (s0 < 0) continue;
+        var se0 = P.sessions[P.slotSess[s0]], mem = [], okSes = true;
+        for (var q0 = 0; q0 < se0.slots.length; q0++) {
+          var cu0 = classUnit[uC[u1]][se0.slots[q0]];
+          if (cu0 === -2) { okSes = false; break; }
+          if (cu0 >= 0) mem.push(cu0);
+        }
+        if (!okSes || mem.length > 2) continue;
+        var se1 = P.sessions[Math.floor(rnd() * P.sessions.length)];
+        if (se1 === se0 || se1.slots.length < mem.length) continue;
+        var sA = se1.slots[Math.floor(rnd() * se1.slots.length)], sB = se1.slots[Math.floor(rnd() * se1.slots.length)];
+        if (mem.length === 2 && sA === sB) continue;
+        pairU[0] = mem[0]; pairS[0] = sA;
+        if (mem.length === 2) { pairU[1] = mem[1]; pairS[1] = sB; }
+        k = mem.length;
+      } else if (mv < 0.6) {
+        var sn;
+        if (mv < 0.25 && unitSlot[u1] >= 0 && classSessionCount(uC[u1], unitSlot[u1]) <= 2) {
+          // this period sits in a buổi with only 1–2 periods: try moving it into another buổi of the same class
+          var se2 = P.sessions[Math.floor(rnd() * P.sessions.length)];
+          sn = se2.slots[Math.floor(rnd() * se2.slots.length)];
+        } else sn = Math.floor(rnd() * nS);
         if (sn === unitSlot[u1]) continue;
         if (classUnit[uC[u1]][sn] !== -1) continue;
         var occ = teacherUnit[uT[u1]][sn];
@@ -3408,7 +3455,18 @@
       if (delta === null) continue;
       if (delta <= 0 || rnd() < Math.exp(-delta / temp)) commit();
       else revert(pairU, k);
+      }
+      return true;
     }
+    var iters = P.iters || 600000, perCycle = Math.floor(iters / cycles);
+    for (var cy = 0; cy < cycles; cy++) {
+      var cont = anneal(cy, perCycle, cy === 0 ? 60 : 250, 0.6);
+      var tot = totalNow();
+      if (tot < bestCost - 1e-9) { bestCost = tot; bestSlots = Int16Array.from(unitSlot); }
+      if (!cont) break;
+      if (cy < cycles - 1 && tot > bestCost + 1e-9) loadSlots(bestSlots);   // reheat from the best one found so far
+    }
+    if (totalNow() > bestCost + 1e-9) loadSlots(bestSlots);
 
     var total = 0;
     for (c = 0; c < nC; c++) total += cCost[c];
@@ -3419,7 +3477,7 @@
 
   // Convenience figures read straight off a draft (used to show the result, and to compare runs).
   function draftMetrics(draft) {
-    var m = { classSessions: 0, classHoles: 0, classTwiceDays: 0, classLoneSessions: 0,
+    var m = { classShortSessions: 0, classSessions: 0, classHoles: 0, classTwiceDays: 0, classLoneSessions: 0,
               teacherSessions: 0, teacherHoles: 0, teacherTwiceDays: 0, teacherLoneDays: 0, teacherDays: 0, classes: draft.classes.length };
     var teach = {};
     draft.classes.forEach(function (cls) {
@@ -3439,6 +3497,7 @@
         bs.forEach(function (b) {
           var ts = byDay[d][b]; m.classSessions++;
           if (ts.length === 1) m.classLoneSessions++;
+          if (ts.length <= 2) m.classShortSessions++;
           m.classHoles += (Math.max.apply(null, ts) - Math.min.apply(null, ts) + 1) - ts.length;
         });
       });
@@ -3585,7 +3644,7 @@
       });
     });
     state.absences.forEach(function (a) {          // hand-picked make-up slots stay reserved
-      if (a.substitute === FALLBACK_MAKEUP && a.makeupSlot && !a.rescheduled && classIdx[a.cls] !== undefined) {
+      if (a.substitute === FALLBACK_MAKEUP && a.makeupSlot && !a.rescheduled && reschedAbs.indexOf(a) < 0 && classIdx[a.cls] !== undefined) {
         var ms = slotOf[a.makeupSlot.day + "|" + a.makeupSlot.buoi + "|" + a.makeupSlot.tiet];
         if (ms !== undefined) fixed.push({ c: classIdx[a.cls], s: ms, subj: sid(a.subject), t: tid(a.teacher) });
       }
@@ -3612,7 +3671,7 @@
     var problem = {
       nSlots: nSlots, slotSess: Array.from(slotSess), slotTiet: Array.from(slotTiet), sessions: sessions, nDays: dayList.length,
       nClasses: draft.classes.length, nTeachers: Object.keys(teachIds).length, nSubjects: Object.keys(subjIds).length,
-      fixed: fixed, blocked: blocked, units: units, seed: 20260928, iters: 16000000, timeMs: 14000
+      fixed: fixed, blocked: blocked, units: units, seed: 20260928, iters: 12000000, timeMs: 60000
     };
 
     // 4) write back, tagging the cells as auto-placed so a re-run can re-plan them
@@ -3647,8 +3706,9 @@
     return null;   // result arrives through `done`
   }
 
-  // Runs the optimiser in a background thread (so the page stays responsive); falls
-  // back to running it inline, with a shorter budget, if workers are unavailable.
+  // Runs the optimiser in background threads (so the page stays responsive): several searches
+  // start from different random seeds at the same time and the best-scoring timetable wins.
+  // Falls back to running inline, with a shorter budget, if workers are unavailable.
   function runTimetableSolver(problem, onProgress, cb) {
     var finished = false;
     function inline() {
@@ -3658,18 +3718,39 @@
       cb(solveTimetable(problem));
     }
     try {
+      var nw = Math.max(2, Math.min(4, navigator.hardwareConcurrency || 2));
       var src = "var OPT_W=" + JSON.stringify(OPT_W) + ";" + mulberry32.toString() + ";" + solveTimetable.toString() + ";" +
         "self.onmessage=function(e){var P=e.data;P.progress=function(f){self.postMessage({progress:f});};" +
         "var r=solveTimetable(P);self.postMessage({unitSlot:Array.from(r.unitSlot),cost:r.cost,unplaced:r.unplaced});};";
       var url = URL.createObjectURL(new Blob([src], { type: "application/javascript" }));
-      var w = new Worker(url);
-      w.onmessage = function (ev) {
-        if (ev.data.progress !== undefined) { if (onProgress) onProgress(ev.data.progress); return; }
-        finished = true; w.terminate(); URL.revokeObjectURL(url);
-        cb(ev.data);
-      };
-      w.onerror = function () { w.terminate(); inline(); };
-      w.postMessage(problem);
+      var workers = [], results = [], failed = 0, prog = [];
+      function settle() {
+        if (results.length + failed < nw || finished) return;
+        finished = true;
+        workers.forEach(function (w) { try { w.terminate(); } catch (e) { /* ignore */ } });
+        URL.revokeObjectURL(url);
+        if (!results.length) { finished = false; inline(); return; }
+        results.sort(function (x, y) { return x.cost - y.cost; });
+        cb(results[0]);
+      }
+      for (var i = 0; i < nw; i++) {
+        (function (idx) {
+          var w = new Worker(url);
+          workers.push(w); prog[idx] = 0;
+          w.onmessage = function (ev) {
+            if (ev.data.progress !== undefined) {
+              prog[idx] = ev.data.progress;
+              if (onProgress) onProgress(prog.reduce(function (a, b) { return a + b; }, 0) / nw);
+              return;
+            }
+            results.push(ev.data); settle();
+          };
+          w.onerror = function () { failed++; settle(); };
+          var pr = {}; Object.keys(problem).forEach(function (k) { pr[k] = problem[k]; });
+          pr.seed = (problem.seed || 1) + idx * 7919;
+          w.postMessage(pr);
+        })(i);
+      }
     } catch (err) { inline(); }
   }
 
@@ -3701,7 +3782,7 @@
         bits.push(green + "/" + state.absences.length + " tiết nghỉ có tiết bù xanh (thuận tiện)" +
           (unresolved ? ", " + unresolved + " tiết nghỉ chưa xếp được bù" : ""));
       }
-      var conv = "Lớp: trung bình " + (m.classSessions / Math.max(1, m.classes)).toFixed(1) + " buổi học/tuần, " +
+      var conv = "Lớp: " + m.classShortSessions + " buổi học chỉ có 1–2 tiết (ưu tiên số 1: càng ít càng tốt), trung bình " + (m.classSessions / Math.max(1, m.classes)).toFixed(1) + " buổi học/tuần, " +
         m.classHoles + " tiết trống giữa buổi, " + m.classTwiceDays + " lượt học cả sáng lẫn chiều một ngày. " +
         "GV: " + m.teacherLoneDays + " ngày chỉ có 1 tiết, " + m.teacherTwiceDays + " lượt dạy cả sáng lẫn chiều, " + m.teacherHoles + " tiết trống giữa buổi.";
       statusEl.textContent = bits.join(" · ") + ". " + conv +
