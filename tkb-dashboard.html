@@ -972,6 +972,10 @@
             <span class="hint" id="absenceHint">—</span>
           </div>
           <div class="panel__body">
+            <div id="replanRow" style="margin-bottom:12px;" hidden>
+              <button class="btn btn--primary" id="replanBtn">🔁 Xếp lại toàn bộ TKB để các tiết bù đều thuận tiện</button>
+              <div id="replanStatus" style="font-size:12px; color:var(--ink-faint); margin-top:6px;"></div>
+            </div>
             <table class="tsum-table" id="absenceTable"></table>
           </div>
         </section>
@@ -2345,8 +2349,15 @@
 
     // ---- the class's own week: its periods + make-ups already chosen for it elsewhere
     var classSlots = (v.scheduleByClass[cls] || []).map(function (e) { return { day: e.day, buoi: e.buoi, tiet: e.tiet, subject: e.subject }; });
+    var selfMakeupKey = null;
+    if (selfAbsence && selfAbsence.rescheduled && selfAbsence.makeupSlot) {
+      // this absence's make-up was placed INTO the timetable by the optimiser: it is the lesson sitting at
+      // that slot, so take it out of the "busy" picture and judge the slot as if it were still free
+      var ms0 = selfAbsence.makeupSlot; selfMakeupKey = ms0.day + "|" + ms0.buoi + "|" + ms0.tiet;
+      classSlots = classSlots.filter(function (e) { return (e.day + "|" + e.buoi + "|" + e.tiet) !== selfMakeupKey; });
+    }
     others.forEach(function (x) {
-      if (x.cls === cls && x.substitute === FALLBACK_MAKEUP && x.makeupSlot) classSlots.push({ day: x.makeupSlot.day, buoi: x.makeupSlot.buoi, tiet: x.makeupSlot.tiet, subject: x.subject });
+      if (x.cls === cls && x.substitute === FALLBACK_MAKEUP && x.makeupSlot && !x.rescheduled) classSlots.push({ day: x.makeupSlot.day, buoi: x.makeupSlot.buoi, tiet: x.makeupSlot.tiet, subject: x.subject });
     });
     var classBusy = {};
     classSlots.forEach(function (e) { classBusy[e.day + "|" + e.buoi + "|" + e.tiet] = true; });
@@ -2357,10 +2368,13 @@
     state.absences.forEach(function (x) {
       if (x.teacher === teacher && (wk === null || (x.weekLabel || "") === wk)) absentKeys[x.day + "|" + x.buoi + "|" + x.tiet] = true;
     });
-    teacherSlots = teacherSlots.filter(function (e) { return !absentKeys[e.day + "|" + e.buoi + "|" + e.tiet]; });
+    teacherSlots = teacherSlots.filter(function (e) {
+      var k0 = e.day + "|" + e.buoi + "|" + e.tiet;
+      return !absentKeys[k0] && k0 !== selfMakeupKey;
+    });
     var teacherBusyExtra = {};
     others.forEach(function (x) {
-      if (x.teacher === teacher && x.substitute === FALLBACK_MAKEUP && x.makeupSlot) {
+      if (x.teacher === teacher && x.substitute === FALLBACK_MAKEUP && x.makeupSlot && !x.rescheduled) {
         teacherSlots.push({ day: x.makeupSlot.day, buoi: x.makeupSlot.buoi, tiet: x.makeupSlot.tiet });
         teacherBusyExtra[x.makeupSlot.day + "|" + x.makeupSlot.buoi + "|" + x.makeupSlot.tiet] = true;
       }
@@ -2370,7 +2384,7 @@
     Object.keys(slotRows).forEach(function (key) {
       if (classBusy[key]) return;
       var busyTeachers = occ[key] || {};
-      if (busyTeachers[teacher] && !absentKeys[key]) return;   // teaching elsewhere then
+      if (busyTeachers[teacher] && !absentKeys[key] && key !== selfMakeupKey) return;   // teaching elsewhere then
       if (teacherBusyExtra[key]) return;
       var parts = key.split("|");
       var day = parts[0], buoi = parts[1], tiet = parts[2], t = +tiet;
@@ -2533,7 +2547,13 @@
     renderModeToggle();
   }
 
+  function updateReplanRow() {
+    var row = $("#replanRow");
+    if (row) row.hidden = !(state.draft && draftHasContent() && latestAssignmentDoc() && state.absences.length);
+  }
+
   function renderAbsenceTable() {
+    updateReplanRow();
     var occ = buildLatestOccupancy();
     var teacherSlots = buildLatestTeacherSlots();
     var quotaMap = getAssignmentQuotaMap(); // {} if no Phân công doc loaded yet
@@ -2704,6 +2724,10 @@
                   ? "⚠ Tiết bù này chưa thuận tiện: " + chosen.warns.join("; ") + "."
                   : "✔ Thuận tiện: " + chosen.goods.join(" + ") + " — không ai phải đi thêm chuyến."
               }));
+            }
+            if (a.rescheduled) {
+              substTd.appendChild(el("div", { style: "font-size:11px; margin-top:2px; color:var(--ink-faint);",
+                text: "🔁 Tiết bù này do bộ tối ưu xếp lại TKB (GV không còn tiết ở khung giờ nghỉ)." }));
             }
           }
           if (!candidates2.length) {
@@ -3129,6 +3153,7 @@
     teacherHole: 30,
     teacherDay: 35,
     teacherTwiceDay: 60,
+    makeupBad: 500,        // a make-up period that is NOT convenient (see classMakeupBad / teacherMakeupBad)
     unplaced: 900
   };
 
@@ -3159,6 +3184,8 @@
       classUnit[f.c][f.s] = -2;
       if (f.t >= 0) teacherUnit[f.t][f.s] = -2;
     });
+    // teacher not available then (registered absence): nothing may be placed there, and it is not a teaching period
+    (P.blocked || []).forEach(function (b) { if (teacherUnit[b.t][b.s] === -1) teacherUnit[b.t][b.s] = -3; });
 
     // sessions grouped by day
     var daySessions = [];
@@ -3166,6 +3193,11 @@
     P.sessions.forEach(function (se) { daySessions[se.day].push(se); });
 
     var cntTmp = new Int8Array(P.nSubjects + 1), lastTmp = new Int16Array(P.nSubjects + 1), usedTmp = [];
+    var unitSlot = new Int16Array(nU).fill(-1);
+    var uC = new Int16Array(nU), uS = new Int16Array(nU), uT = new Int16Array(nU);
+    var flaggedByClass = [], flaggedByTeacher = [];
+    for (c = 0; c < nC; c++) flaggedByClass.push([]);
+    for (t = 0; t < nT; t++) flaggedByTeacher.push([]);
 
     function classCost(cc) {
       var subj = classSubj[cc], cost = 0;
@@ -3198,6 +3230,24 @@
         if (att > 0) cost += W.classDay;
         if (att === 2) cost += W.classTwiceDay;
       }
+      // make-up periods must be convenient for the class: joined onto other periods
+      // of a buổi it attends anyway, no gap in that buổi, and no same subject twice that day
+      var fl = flaggedByClass[cc];
+      for (var q = 0; q < fl.length; q++) {
+        var fs = unitSlot[fl[q]];
+        if (fs < 0) continue;
+        var se = P.sessions[P.slotSess[fs]], bn = 0, bmn = 99, bmx = -1, bad = false;
+        for (var z = 0; z < se.slots.length; z++) {
+          if (subj[se.slots[z]] >= 0) { bn++; var bt = P.slotTiet[se.slots[z]]; if (bt < bmn) bmn = bt; if (bt > bmx) bmx = bt; }
+        }
+        if (bn < 2 || (bmx - bmn + 1) - bn > 0) bad = true;
+        if (!bad) {
+          var ds = daySessions[se.day], same = 0;
+          for (var y = 0; y < ds.length; y++) for (z = 0; z < ds[y].slots.length; z++) if (subj[ds[y].slots[z]] === subj[fs]) same++;
+          if (same > 1) bad = true;
+        }
+        if (bad) cost += W.makeupBad;
+      }
       return cost;
     }
 
@@ -3208,7 +3258,7 @@
         for (var a = 0; a < ses.length; a++) {
           var sl = ses[a].slots, n = 0, mn = 99, mx = -1;
           for (var k = 0; k < sl.length; k++) {
-            if (occ[sl[k]] !== -1) { n++; var tt = P.slotTiet[sl[k]]; if (tt < mn) mn = tt; if (tt > mx) mx = tt; }
+            if (occ[sl[k]] !== -1 && occ[sl[k]] !== -3) { n++; var tt = P.slotTiet[sl[k]]; if (tt < mn) mn = tt; if (tt > mx) mx = tt; }
           }
           if (n) {
             att++; total += n;
@@ -3224,14 +3274,24 @@
         }
         if (att === 2) cost += W.teacherTwiceDay;
       }
+      // the teacher's make-up period: joined onto other periods of a buổi they teach anyway, no gap
+      var fl = flaggedByTeacher[tt0];
+      for (var q = 0; q < fl.length; q++) {
+        var fs = unitSlot[fl[q]];
+        if (fs < 0) continue;
+        var se = P.sessions[P.slotSess[fs]], bn = 0, bmn = 99, bmx = -1;
+        for (var z = 0; z < se.slots.length; z++) {
+          var ov = occ[se.slots[z]];
+          if (ov !== -1 && ov !== -3) { bn++; var bt = P.slotTiet[se.slots[z]]; if (bt < bmn) bmn = bt; if (bt > bmx) bmx = bt; }
+        }
+        if (bn < 2 || (bmx - bmn + 1) - bn > 0) cost += W.makeupBad;
+      }
       return cost;
     }
 
-    var unitSlot = new Int16Array(nU).fill(-1);
-    var uC = new Int16Array(nU), uS = new Int16Array(nU), uT = new Int16Array(nU);
     var classUnits = [];
     for (c = 0; c < nC; c++) classUnits.push([]);
-    P.units.forEach(function (u, idx) { uC[idx] = u.c; uS[idx] = u.subj; uT[idx] = u.t; classUnits[u.c].push(idx); });
+    P.units.forEach(function (u, idx) { uC[idx] = u.c; uS[idx] = u.subj; uT[idx] = u.t; classUnits[u.c].push(idx); if (u.flag) { flaggedByClass[u.c].push(idx); flaggedByTeacher[u.t].push(idx); } });
 
     function place(u, sl) {
       classSubj[uC[u]][sl] = uS[u]; classUnit[uC[u]][sl] = u; teacherUnit[uT[u]][sl] = u; unitSlot[u] = sl;
@@ -3428,6 +3488,28 @@
     var draft = state.draft;
     if (!draft.classes.length) { done({ error: "Bản nháp chưa có lớp nào." }); return; }
 
+    // 0) teachers' registered absences (tab "Dạy thay"). Every absence that is meant to be MADE UP
+    //    (no other cover chosen) is re-planned: the teacher can't teach at that time, and the lesson
+    //    has to reappear somewhere convenient. Absences covered by a substitute keep their cell as is.
+    var slotOf = {};
+    draft.scheduleByClass[draft.classes[0]].forEach(function (e, i) { slotOf[e.day + "|" + e.buoi + "|" + e.tiet] = i; });
+    var reschedAbs = [], blockedList = [];
+    state.absences.forEach(function (a) {
+      var ci = draft.classes.indexOf(a.cls), si = slotOf[a.day + "|" + a.buoi + "|" + a.tiet];
+      if (ci < 0 || si === undefined) { a.rescheduled = false; return; }
+      var entry = draft.scheduleByClass[a.cls][si];
+      var covered = !!a.substitute && a.substitute !== FALLBACK_MAKEUP;
+      blockedList.push({ teacher: a.teacher, s: si });
+      if (covered) {
+        a.rescheduled = false;
+        if (entry.auto) entry.auto = false;           // keep the covered lesson exactly where it is
+      } else if (a.rescheduled || (entry.auto && entry.teacher === a.teacher)) {
+        reschedAbs.push(a);
+      } else {
+        a.rescheduled = false;                        // absent cell was typed / uploaded: leave it to the tab's own make-up flow
+      }
+    });
+
     // 1) forget what a previous auto-fill put down (never touch manual / uploaded cells)
     draft.classes.forEach(function (cls) {
       (draft.scheduleByClass[cls] || []).forEach(function (e) {
@@ -3502,16 +3584,35 @@
         if (e.subject || e.teacher) fixed.push({ c: classIdx[cls], s: i, subj: sid(e.subject), t: e.teacher ? tid(e.teacher) : -1 });
       });
     });
+    state.absences.forEach(function (a) {          // hand-picked make-up slots stay reserved
+      if (a.substitute === FALLBACK_MAKEUP && a.makeupSlot && !a.rescheduled && classIdx[a.cls] !== undefined) {
+        var ms = slotOf[a.makeupSlot.day + "|" + a.makeupSlot.buoi + "|" + a.makeupSlot.tiet];
+        if (ms !== undefined) fixed.push({ c: classIdx[a.cls], s: ms, subj: sid(a.subject), t: tid(a.teacher) });
+      }
+    });
     var units = [];
     targets.forEach(function (tg) {
       var su = sid(tg.subject), tu = tid(tg.teacher), cu = classIdx[tg.cls];
       for (var k = 0; k < tg.periods; k++) units.push({ c: cu, subj: su, t: tu });
     });
+    var blocked = blockedList.map(function (b) { return { t: tid(b.teacher), s: b.s }; });
+    // one lesson of each re-planned absence is flagged: it IS the make-up and must end up convenient
+    var flagOf = [];
+    reschedAbs.forEach(function (a) {
+      var cu = classIdx[a.cls], tu = tid(a.teacher), su = sid(a.subject), pick = -1;
+      for (var i = 0; i < units.length; i++) {
+        if (units[i].flag || units[i].c !== cu || units[i].t !== tu) continue;
+        if (units[i].subj === su) { pick = i; break; }
+        if (pick < 0) pick = i;
+      }
+      if (pick >= 0) units[pick].flag = true;
+      flagOf.push(pick);
+    });
 
     var problem = {
       nSlots: nSlots, slotSess: Array.from(slotSess), slotTiet: Array.from(slotTiet), sessions: sessions, nDays: dayList.length,
       nClasses: draft.classes.length, nTeachers: Object.keys(teachIds).length, nSubjects: Object.keys(subjIds).length,
-      fixed: fixed, units: units, seed: 20260928, iters: 16000000, timeMs: 14000
+      fixed: fixed, blocked: blocked, units: units, seed: 20260928, iters: 16000000, timeMs: 14000
     };
 
     // 4) write back, tagging the cells as auto-placed so a re-run can re-plan them
@@ -3527,10 +3628,19 @@
         e.subject = subjName[u.subj]; e.teacher = teachName[u.t]; e.auto = true;
         placed++;
       });
+      reschedAbs.forEach(function (a, i) {
+        var u = flagOf[i], sl = u >= 0 ? sol.unitSlot[u] : -1;
+        if (sl >= 0) {
+          var en = draft.scheduleByClass[draft.classes[0]][sl];
+          a.substitute = FALLBACK_MAKEUP; a.rescheduled = true;
+          a.makeupSlot = { day: en.day, buoi: en.buoi, tiet: en.tiet };
+        } else { a.rescheduled = false; a.makeupSlot = null; }
+      });
+      saveAbsencesToStorage();
       return {
         placed: placed, unplaced: (units.length - placed) + droppedTotal,
         cappedTeacherCount: Object.keys(cappedTeachers).length,
-        metrics: draftMetrics(draft)
+        metrics: draftMetrics(draft), absencesReplanned: reschedAbs.length
       };
     }
     runTimetableSolver(problem, onProgress, function (sol) { done(apply(sol)); });
@@ -3561,6 +3671,52 @@
       w.onerror = function () { w.terminate(); inline(); };
       w.postMessage(problem);
     } catch (err) { inline(); }
+  }
+
+  // Shared by the "Tự động xếp & tối ưu" button (tab TKB tuần sau) and the "Xếp lại toàn bộ TKB…"
+  // button (tab Dạy thay): re-plans the whole draft, then reports how convenient the result is.
+  function runAutoFillOptimize(statusEl, btn, afterFn) {
+    if (!state.draft) { statusEl.textContent = "Hãy tạo bản nháp ở tab \"TKB tuần sau\" trước."; return; }
+    if (!latestAssignmentDoc()) { statusEl.textContent = "Cần tải bảng phân công trước."; return; }
+    btn.disabled = true;
+    statusEl.textContent = "Đang xếp và tối ưu lịch… 0% (khoảng 15 giây, bạn có thể chờ trên trang này)";
+    function finish(res) {
+      btn.disabled = false;
+      if (res.error) { statusEl.textContent = res.error; return; }
+      touchDraft();
+      var m = res.metrics;
+      var bits = [res.placed + " tiết đã xếp"];
+      if (res.cappedTeacherCount) bits.push(res.cappedTeacherCount + " GV chạm trần 25 tiết/tuần");
+      if (res.unplaced) bits.push(res.unplaced + " tiết chưa xếp được — cần điền tay");
+      // how many of the registered absences now have a convenient (green) make-up period
+      var replanned = state.absences.filter(function (a) { return a.rescheduled; });
+      var green = replanned.filter(function (a) {
+        var c = findMakeupCandidates(a.cls, a.teacher, a.subject, a).filter(function (x) {
+          return x.day === a.makeupSlot.day && x.buoi === a.makeupSlot.buoi && x.tiet === a.makeupSlot.tiet;
+        })[0];
+        return c && !c.warns.length;
+      }).length;
+      var unresolved = state.absences.filter(function (a) { return !a.rescheduled && (!a.substitute || (a.substitute === FALLBACK_MAKEUP && !a.makeupSlot)); }).length;
+      if (state.absences.length) {
+        bits.push(green + "/" + state.absences.length + " tiết nghỉ có tiết bù xanh (thuận tiện)" +
+          (unresolved ? ", " + unresolved + " tiết nghỉ chưa xếp được bù" : ""));
+      }
+      var conv = "Lớp: trung bình " + (m.classSessions / Math.max(1, m.classes)).toFixed(1) + " buổi học/tuần, " +
+        m.classHoles + " tiết trống giữa buổi, " + m.classTwiceDays + " lượt học cả sáng lẫn chiều một ngày. " +
+        "GV: " + m.teacherLoneDays + " ngày chỉ có 1 tiết, " + m.teacherTwiceDays + " lượt dạy cả sáng lẫn chiều, " + m.teacherHoles + " tiết trống giữa buổi.";
+      statusEl.textContent = bits.join(" · ") + ". " + conv +
+        " Số tiết mỗi lớp là ước tính từ phân công (chia đều) — bạn nên rà lại trước khi Chốt. Bấm lại để xếp lại (ô bạn đã gõ tay được giữ nguyên).";
+      if (state.viewMode !== "leave") renderDraftTable();
+      if (afterFn) afterFn();
+      else if (state.viewMode === "leave") render();
+    }
+    setTimeout(function () {
+      try {
+        autoFillDraftFromAssignment(25, function (f) {
+          statusEl.textContent = "Đang xếp và tối ưu lịch… " + Math.round(f * 100) + "%";
+        }, finish);
+      } catch (err) { finish({ error: "Lỗi khi xếp lịch: " + ((err && err.message) || err) }); }
+    }, 30);
   }
 
   function renderDraftClassSelect() {
@@ -4371,35 +4527,9 @@
       try { $("#draftPanel").scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { /* ignore */ }
     };
     $("#confirmDraftBtn").onclick = confirmDraft;
-    $("#autoFillDraftBtn").onclick = function () {
-      var statusEl = $("#autoFillStatus");
-      if (!state.draft) { statusEl.textContent = "Hãy bấm \"Tạo bản nháp\" trước."; return; }
-      if (!latestAssignmentDoc()) { statusEl.textContent = "Cần tải bảng phân công trước."; return; }
-      var btn = $("#autoFillDraftBtn");
-      btn.disabled = true;
-      statusEl.textContent = "Đang xếp và tối ưu lịch… 0% (khoảng 15 giây, bạn có thể chờ trên trang này)";
-      function finish(res) {
-        btn.disabled = false;
-        if (res.error) { statusEl.textContent = res.error; return; }
-        touchDraft();
-        renderDraftTable();
-        var m = res.metrics;
-        var bits = [res.placed + " tiết đã xếp"];
-        if (res.cappedTeacherCount) bits.push(res.cappedTeacherCount + " GV chạm trần 25 tiết/tuần");
-        if (res.unplaced) bits.push(res.unplaced + " tiết chưa xếp được — cần điền tay");
-        var conv = "Lớp: trung bình " + (m.classSessions / Math.max(1, m.classes)).toFixed(1) + " buổi học/tuần, " +
-          m.classHoles + " tiết trống giữa buổi, " + m.classTwiceDays + " lượt học cả sáng lẫn chiều một ngày. " +
-          "GV: " + m.teacherLoneDays + " ngày chỉ có 1 tiết, " + m.teacherTwiceDays + " lượt dạy cả sáng lẫn chiều, " + m.teacherHoles + " tiết trống giữa buổi.";
-        statusEl.textContent = bits.join(" · ") + ". " + conv +
-          " Số tiết mỗi lớp là ước tính từ phân công (chia đều) — bạn nên rà lại trước khi Chốt. Bấm lại nút này để xếp lại (ô bạn đã gõ tay được giữ nguyên). Tab \"Dạy thay\" đã dùng bản nháp này.";
-      }
-      setTimeout(function () {
-        try {
-          autoFillDraftFromAssignment(25, function (f) {
-            statusEl.textContent = "Đang xếp và tối ưu lịch… " + Math.round(f * 100) + "%";
-          }, finish);
-        } catch (err) { finish({ error: "Lỗi khi xếp lịch: " + ((err && err.message) || err) }); }
-      }, 30);
+    $("#autoFillDraftBtn").onclick = function () { runAutoFillOptimize($("#autoFillStatus"), $("#autoFillDraftBtn"), null); };
+    $("#replanBtn").onclick = function () {
+      runAutoFillOptimize($("#replanStatus"), $("#replanBtn"), function () { render(); });
     };
     $("#goLeaveBtn").onclick = function () {
       state.viewMode = "leave";
