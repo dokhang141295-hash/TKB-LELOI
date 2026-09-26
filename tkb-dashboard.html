@@ -3737,6 +3737,48 @@
     var makeupFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9F0DD" } };
     var slotRows = buildSlotRowIndex(v);
     var makeupCount = 0;
+
+    // 3a) the periods the teacher is ABSENT for: whatever solution was picked,
+    //     the original cell must not keep showing the absent teacher as if
+    //     nothing changed. (Only touches a cell that still holds that teacher —
+    //     if the draft was edited since, the registration is stale and skipped.)
+    var absentFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFAD7C0" } };   // orange: teacher off, class period vacated
+    var substFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD6E4F5" } };    // blue: someone else covers it
+    var unresolvedFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF4B6B6" } }; // red: nobody covers yet
+    var absenceCounts = { cleared: 0, substituted: 0, selfStudy: 0, unresolved: 0 };
+    state.absences.forEach(function (a) {
+      var ar = slotRows[a.day + "|" + a.buoi + "|" + a.tiet];
+      var ac = v.classColByName[a.cls];
+      if (ar === undefined || ac === undefined) return;
+      var acell = ws.getCell(ar + 1, ac + 1);
+      var cur = (acell.value === null || acell.value === undefined) ? "" : acell.value.toString();
+      if (cur.toUpperCase().indexOf(("- " + a.teacher).toUpperCase()) === -1) return;   // not this teacher's period any more
+      var who = a.teacher + " nghỉ" + (a.weekLabel ? " (" + a.weekLabel + ")" : "");
+      if (a.substitute === FALLBACK_MAKEUP) {
+        acell.value = null; acell.fill = absentFill;
+        acell.note = who + " — tiết này bỏ trống, GV dạy bù " + (a.makeupSlot
+          ? "vào " + a.makeupSlot.day + " " + a.makeupSlot.buoi + " tiết " + a.makeupSlot.tiet + " (ô xanh lá)."
+          : "vào tiết khác (CHƯA chọn tiết bù ở tab Dạy thay).");
+        absenceCounts.cleared++;
+      } else if (a.substitute === FALLBACK_SELF_STUDY) {
+        acell.value = "TỰ HỌC"; acell.fill = absentFill;
+        acell.note = who + " — cho học sinh tự học có giám sát (môn gốc: " + a.subject + ").";
+        absenceCounts.selfStudy++;
+      } else if (a.substitute === FALLBACK_CUSTOM) {
+        var nm = (a.customNote || "").trim();
+        if (nm) { acell.value = a.subject + " - " + nm; acell.fill = substFill; acell.note = who + " — " + nm + " dạy thay."; absenceCounts.substituted++; }
+        else { acell.fill = unresolvedFill; acell.note = who + " — CHƯA có người dạy thay."; absenceCounts.unresolved++; }
+      } else if (a.substitute) {
+        acell.value = a.subject + " - " + a.substitute; acell.fill = substFill;
+        acell.note = who + " — " + a.substitute + " dạy thay.";
+        absenceCounts.substituted++;
+      } else {
+        acell.fill = unresolvedFill;
+        acell.note = who + " — CHƯA có người dạy thay / chưa chọn phương án.";
+        absenceCounts.unresolved++;
+      }
+    });
+
     state.absences.filter(function (a) { return a.substitute === FALLBACK_MAKEUP && a.makeupSlot; }).forEach(function (a) {
       var key = a.makeupSlot.day + "|" + a.makeupSlot.buoi + "|" + a.makeupSlot.tiet;
       var mr = slotRows[key];
@@ -3792,7 +3834,7 @@
       "Ghi chú: TKB tuần " + monday + " — sao chép từ bản mới nhất (" +
       ((v.fileName.match(/SO ?\d+/i) || [])[0] || v.fileName).toUpperCase() +
       "). Ô tô VÀNG là tiết đang VƯỢT định mức phân công" + (doc ? " (" + (doc.lanNumber ? "LẦN " + doc.lanNumber : doc.fileName) + ")" : "") +
-      "; ô tô XANH LÁ là tiết BÙ cho tuần trước (từ tab Dạy thay); ô tô XÁM là buổi được đánh dấu NGHỈ — di chuột vào ô để xem chú thích, cần rà lại trước khi ban hành.";
+      "; ô tô XANH LÁ là tiết BÙ; ô tô CAM là tiết GV nghỉ (bỏ trống hoặc tự học); ô tô XANH DƯƠNG là tiết có GV dạy thay; ô tô ĐỎ là tiết GV nghỉ mà CHƯA có phương án; ô tô XÁM là buổi được đánh dấu NGHỈ — di chuột vào ô để xem chú thích, cần rà lại trước khi ban hành.";
     ws.getCell(legendRow, 1).font = { name: "Times New Roman", size: 9, italic: true, color: { argb: "FFB45309" } };
     ws.mergeCells(legendRow, 1, legendRow, Math.min(10, ncols));
     ws.getCell(legendRow, 1).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
@@ -3805,6 +3847,10 @@
       var bits = [];
       if (Object.keys(flagged).length) bits.push(Object.keys(flagged).length + " ô vượt định mức");
       if (makeupCount) bits.push(makeupCount + " tiết bù");
+      if (absenceCounts.cleared) bits.push(absenceCounts.cleared + " tiết nghỉ đã xoá (chờ dạy bù)");
+      if (absenceCounts.substituted) bits.push(absenceCounts.substituted + " tiết đã thay GV");
+      if (absenceCounts.selfStudy) bits.push(absenceCounts.selfStudy + " tiết tự học");
+      if (absenceCounts.unresolved) bits.push(absenceCounts.unresolved + " tiết nghỉ CHƯA có phương án (tô đỏ)");
       if (offCount) bits.push(offCount + " ô nghỉ đã xoá");
       statusEl.textContent = "Đã xuất " + filename + (bits.length ? " · " + bits.join(", ") : "");
     }).catch(function (err) {
