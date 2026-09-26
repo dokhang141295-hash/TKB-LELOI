@@ -1528,10 +1528,17 @@
         if (res.error) {
           state.skipped.push(res.fileName + " — " + res.error);
         } else if (res.docType === "assignment") {
-          var dupA = state.assignmentDocs.some(function (d) {
+          var dupDoc = state.assignmentDocs.filter(function (d) {
             return d.fileName === res.fileName && d.lastModified === res.lastModified;
-          });
-          if (!dupA) {
+          })[0];
+          if (dupDoc) {
+            // Same file uploaded again: refresh the stored copy with what was just
+            // parsed, so a copy saved by an older app version (missing the
+            // per-khối "Lớp" text) is replaced instead of silently kept.
+            dupDoc.staff = res.staff; dupDoc.sheetName = res.sheetName;
+            dupDoc.lanNumber = res.lanNumber; dupDoc.lanDate = res.lanDate;
+            saveAssignmentToStorage();
+          } else {
             state.assignmentDocs.push({
               fileName: res.fileName, lastModified: res.lastModified, sheetName: res.sheetName,
               staff: res.staff, lanNumber: res.lanNumber, lanDate: res.lanDate
@@ -2647,6 +2654,11 @@
           // migrate the old single-doc storage shape from before multi-Lần support
           state.assignmentDocs = [parsed];
         }
+        // drop copies saved by an older app version that didn't keep the per-khối
+        // "Lớp" text (l10/l11/l12) — they can't build a draft; re-upload restores them
+        state.assignmentDocs = state.assignmentDocs.filter(function (d) {
+          return d && d.staff && d.staff.length && d.staff.some(function (p) { return "l10" in p; });
+        });
         // dates come back from JSON as strings — restore them to Date objects
         state.assignmentDocs.forEach(function (d) { if (d.lanDate) d.lanDate = new Date(d.lanDate); });
         sortAssignmentDocs();
