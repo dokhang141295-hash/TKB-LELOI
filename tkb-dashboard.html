@@ -3552,20 +3552,23 @@
     //    has to reappear somewhere convenient. Absences covered by a substitute keep their cell as is.
     var slotOf = {};
     draft.scheduleByClass[draft.classes[0]].forEach(function (e, i) { slotOf[e.day + "|" + e.buoi + "|" + e.tiet] = i; });
-    var reschedAbs = [], blockedList = [];
+    var reschedAbs = [], blockedList = [], skippedAbs = 0;
     state.absences.forEach(function (a) {
       var ci = draft.classes.indexOf(a.cls), si = slotOf[a.day + "|" + a.buoi + "|" + a.tiet];
-      if (ci < 0 || si === undefined) { a.rescheduled = false; return; }
+      if (ci < 0 || si === undefined) { a.rescheduled = false; skippedAbs++; return; }
       var entry = draft.scheduleByClass[a.cls][si];
       var covered = !!a.substitute && a.substitute !== FALLBACK_MAKEUP;
       blockedList.push({ teacher: a.teacher, s: si });
       if (covered) {
         a.rescheduled = false;
         if (entry.auto) entry.auto = false;           // keep the covered lesson exactly where it is
-      } else if (a.rescheduled || (entry.auto && entry.teacher === a.teacher)) {
+      } else if (a.rescheduled || a.substitute === FALLBACK_MAKEUP || (entry.auto && entry.teacher === a.teacher)) {
+        // the teacher is off here and the lesson is to be made up: it gets re-planned wherever it is convenient
+        // (even if the absent cell was typed / uploaded rather than auto-placed: that cell is vacated)
+        if (!entry.auto && entry.teacher === a.teacher) { entry.subject = ""; entry.teacher = ""; }
         reschedAbs.push(a);
       } else {
-        a.rescheduled = false;                        // absent cell was typed / uploaded: leave it to the tab's own make-up flow
+        a.rescheduled = false;                        // no decision yet: leave it to the tab's own flow
       }
     });
 
@@ -3699,7 +3702,7 @@
       return {
         placed: placed, unplaced: (units.length - placed) + droppedTotal,
         cappedTeacherCount: Object.keys(cappedTeachers).length,
-        metrics: draftMetrics(draft), absencesReplanned: reschedAbs.length
+        metrics: draftMetrics(draft), absencesReplanned: reschedAbs.length, absencesSkipped: skippedAbs
       };
     }
     runTimetableSolver(problem, onProgress, function (sol) { done(apply(sol)); });
@@ -3770,13 +3773,14 @@
       if (res.cappedTeacherCount) bits.push(res.cappedTeacherCount + " GV chạm trần 25 tiết/tuần");
       if (res.unplaced) bits.push(res.unplaced + " tiết chưa xếp được — cần điền tay");
       // how many of the registered absences now have a convenient (green) make-up period
-      var replanned = state.absences.filter(function (a) { return a.rescheduled; });
+      var replanned = state.absences.filter(function (a) { return a.rescheduled || (a.substitute === FALLBACK_MAKEUP && a.makeupSlot); });
       var green = replanned.filter(function (a) {
         var c = findMakeupCandidates(a.cls, a.teacher, a.subject, a).filter(function (x) {
           return x.day === a.makeupSlot.day && x.buoi === a.makeupSlot.buoi && x.tiet === a.makeupSlot.tiet;
         })[0];
         return c && !c.warns.length;
       }).length;
+      if (res.absencesSkipped) bits.push(res.absencesSkipped + " tiết nghỉ không khớp lớp/khung giờ của bản nháp nên không xếp lại được");
       var unresolved = state.absences.filter(function (a) { return !a.rescheduled && (!a.substitute || (a.substitute === FALLBACK_MAKEUP && !a.makeupSlot)); }).length;
       if (state.absences.length) {
         bits.push(green + "/" + state.absences.length + " tiết nghỉ có tiết bù xanh (thuận tiện)" +
